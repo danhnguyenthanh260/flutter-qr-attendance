@@ -167,8 +167,7 @@ class SessionProvider extends ChangeNotifier {
 
   Future<void> refreshQrTicketNow() async {
     _qrTimer?.cancel();
-    await _fetchNewTicket();
-    startQrRotation();
+    await startQrRotation();
   }
 
   void stopQrRotation() {
@@ -223,8 +222,18 @@ class SessionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isDisposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_isDisposed) {
+      super.notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
+    _isDisposed = true;
     _qrTimer?.cancel();
     super.dispose();
   }
