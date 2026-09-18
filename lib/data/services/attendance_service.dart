@@ -1,4 +1,5 @@
 import '../models/class_model.dart';
+import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
 
 abstract class AttendanceService {
@@ -10,6 +11,7 @@ abstract class AttendanceService {
   });
   Future<AttendanceSession?> getActiveSession();
   Future<AttendanceSession> closeSession(String sessionId);
+  Future<QrTicketModel> getNextQrTicket(String sessionId);
 }
 
 class MockAttendanceService implements AttendanceService {
@@ -112,6 +114,29 @@ class MockAttendanceService implements AttendanceService {
     );
     final closed = _activeSession!;
     _activeSession = null;
+    _generationCounter = 0;
     return closed;
+  }
+
+  int _generationCounter = 0;
+
+  @override
+  Future<QrTicketModel> getNextQrTicket(String sessionId) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    _generationCounter++;
+    final now = DateTime.now();
+    final expiresAt = now.add(const Duration(seconds: 30));
+    final ticketCode = 'TKT_${sessionId}_G${_generationCounter}_${now.millisecondsSinceEpoch % 100000}';
+    final formUrl =
+        'https://docs.google.com/forms/d/e/1FAIpQLScMockForms/viewform?usp=pp_url&entry.1001=$ticketCode&entry.1002=$sessionId';
+
+    return QrTicketModel(
+      ticketCode: ticketCode,
+      formUrl: formUrl,
+      generation: _generationCounter,
+      validSeconds: 30,
+      createdAt: now,
+      expiresAt: expiresAt,
+    );
   }
 }
