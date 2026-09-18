@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../core/storage/session_storage.dart';
 import '../data/models/class_model.dart';
 import '../data/models/qr_ticket_model.dart';
 import '../data/models/session_model.dart';
@@ -7,9 +8,13 @@ import '../data/services/attendance_service.dart';
 
 class SessionProvider extends ChangeNotifier {
   final AttendanceService _service;
+  final SessionStorage _storage;
 
-  SessionProvider({AttendanceService? service})
-      : _service = service ?? MockAttendanceService();
+  SessionProvider({
+    AttendanceService? service,
+    SessionStorage? storage,
+  })  : _service = service ?? MockAttendanceService(),
+        _storage = storage ?? LocalFileSessionStorage();
 
   List<ClassModel> _classes = [];
   ClassModel? _selectedClass;
@@ -21,6 +26,7 @@ class SessionProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   bool _isStartingSession = false;
+  bool _isClosingSession = false;
   String? _errorMessage;
 
   // QR Rotation state (Issue #10)
@@ -38,6 +44,7 @@ class SessionProvider extends ChangeNotifier {
   AttendanceSession? get activeSession => _activeSession;
   bool get isLoading => _isLoading;
   bool get isStartingSession => _isStartingSession;
+  bool get isClosingSession => _isClosingSession;
   String? get errorMessage => _errorMessage;
   bool get hasActiveSession =>
       _activeSession != null && _activeSession!.status == SessionStatus.active;
@@ -47,7 +54,7 @@ class SessionProvider extends ChangeNotifier {
   bool get isRotatingQr => _isRotatingQr;
   bool get isOffline => _isOffline;
 
-  // Load initial classes
+  // Load initial classes and restore session state (Issue #21)
   Future<void> loadInitialData() async {
     _isLoading = true;
     _errorMessage = null;
@@ -58,12 +65,24 @@ class SessionProvider extends ChangeNotifier {
       if (_classes.isNotEmpty) {
         await selectClass(_classes.first);
       }
-      _activeSession = await _service.getActiveSession();
-      if (_activeSession != null && _activeSession!.status == SessionStatus.active) {
+
+      // Check server active session and local storage
+      final serverSession = await _service.getActiveSession();
+      final cachedSession = await _storage.loadActiveSession();
+
+      if (serverSession != null && serverSession.status == SessionStatus.active) {
+        _activeSession = serverSession;
+        await _storage.saveActiveSession(serverSession);
         await startQrRotation();
+      } else if (cachedSession != null) {
+        // Cache exists but server is not active or closed -> clear cache, no reopening
+        await _storage.clearActiveSession();
+        _activeSession = null;
+      } else {
+        _activeSession = null;
       }
     } catch (e) {
-      _errorMessage = 'Không thể tải danh sách lớp: $e';
+      _errorMessage = 'Không thể tải dữ liệu phiên: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -104,6 +123,11 @@ class SessionProvider extends ChangeNotifier {
       return false;
     }
 
+    // If session already active, don't create duplicate
+    if (hasActiveSession) {
+      return true;
+    }
+
     if (_selectedClass == null || _selectedSlot == null) {
       _errorMessage = 'Vui lòng chọn đầy đủ Lớp học và Ca học';
       notifyListeners();
@@ -115,10 +139,12 @@ class SessionProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _activeSession = await _service.startSession(
+      final session = await _service.startSession(
         classId: _selectedClass!.id,
         slot: _selectedSlot!,
       );
+      _activeSession = session;
+      await _storage.saveActiveSession(session);
       _isStartingSession = false;
       await startQrRotation();
       notifyListeners();
@@ -194,24 +220,39 @@ class SessionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Close session (Issue #21)
+  // Close session with timeout, anti-double-click and no false success (Issue #21)
   Future<bool> closeSession() async {
     if (_activeSession == null) return false;
+    if (_isClosingSession) return false;
 
-    _isLoading = true;
+    _isClosingSession = true;
+    _errorMessage = null;
+    // Dừng QR ngay lập tức để sinh viên không quét thêm
     stopQrRotation();
     notifyListeners();
 
     try {
-      await _service.closeSession(_activeSession!.id);
+      // Đợi xác nhận từ máy chủ API với timeout 5 giây
+      await _service
+          .closeSession(_activeSession!.id)
+          .timeout(const Duration(seconds: 5));
+
+      // Chỉ khi máy chủ xác nhận thành công mới xóa cache và đánh dấu closed
+      await _storage.clearActiveSession();
       _activeSession = null;
       _currentTicket = null;
-      _isLoading = false;
+      _isClosingSession = false;
       notifyListeners();
       return true;
+    } on TimeoutException {
+      // Không báo thành công giả khi timeout
+      _isClosingSession = false;
+      _errorMessage = 'Hết thời gian chờ phản hồi từ máy chủ khi đóng phiên. Vui lòng kiểm tra lại mạng.';
+      notifyListeners();
+      return false;
     } catch (e) {
-      _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      _isLoading = false;
+      _isClosingSession = false;
+      _errorMessage = 'Lỗi khi đóng phiên: ${e.toString().replaceFirst('Exception: ', '')}';
       notifyListeners();
       return false;
     }

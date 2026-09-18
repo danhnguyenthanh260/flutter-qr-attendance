@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
+import 'package:flutter_qr_attendance/core/storage/session_storage.dart';
+import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
 import 'package:flutter_qr_attendance/main.dart';
 import 'package:flutter_qr_attendance/providers/session_provider.dart';
 
@@ -16,13 +18,23 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(() => tester.view.resetPhysicalSize());
 
+    final provider = SessionProvider(
+      service: MockAttendanceService(simulateDelay: false),
+      storage: MemorySessionStorage(),
+    );
+    addTearDown(() => provider.dispose());
+
+    await tester.runAsync(() async {
+      await provider.loadInitialData();
+    });
+
     await tester.pumpWidget(
-      ChangeNotifierProvider(
-        create: (_) => SessionProvider(),
+      ChangeNotifierProvider.value(
+        value: provider,
         child: const QrAttendanceApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.text('QR Attendance'), findsOneWidget);
     expect(find.text('Phiên điểm danh'), findsOneWidget);

@@ -15,7 +15,17 @@ abstract class AttendanceService {
 }
 
 class MockAttendanceService implements AttendanceService {
+  final bool simulateDelay;
   AttendanceSession? _activeSession;
+  int _generationCounter = 0;
+
+  MockAttendanceService({this.simulateDelay = true});
+
+  Future<void> _delay(int ms) async {
+    if (simulateDelay) {
+      await Future.delayed(Duration(milliseconds: ms));
+    }
+  }
 
   final List<ClassModel> _mockClasses = const [
     ClassModel(
@@ -46,13 +56,13 @@ class MockAttendanceService implements AttendanceService {
 
   @override
   Future<List<ClassModel>> getClasses() async {
-    await Future.delayed(const Duration(milliseconds: 300));
+    await _delay(300);
     return _mockClasses;
   }
 
   @override
   Future<List<SessionSlot>> getSlotsForClass(String classId) async {
-    await Future.delayed(const Duration(milliseconds: 200));
+    await _delay(200);
     final today = DateTime.now().toIso8601String().split('T').first;
     return [
       SessionSlot(slotNumber: 1, timeRange: '07:30 - 09:00', date: today),
@@ -67,7 +77,7 @@ class MockAttendanceService implements AttendanceService {
     required String classId,
     required SessionSlot slot,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 500));
+    await _delay(500);
 
     if (_activeSession != null && _activeSession!.status == SessionStatus.active) {
       if (_activeSession!.classId == classId &&
@@ -97,13 +107,13 @@ class MockAttendanceService implements AttendanceService {
 
   @override
   Future<AttendanceSession?> getActiveSession() async {
-    await Future.delayed(const Duration(milliseconds: 150));
+    await _delay(150);
     return _activeSession;
   }
 
   @override
   Future<AttendanceSession> closeSession(String sessionId) async {
-    await Future.delayed(const Duration(milliseconds: 400));
+    await _delay(400);
     if (_activeSession == null || _activeSession!.id != sessionId) {
       throw Exception('Phiên không tồn tại hoặc đã kết thúc');
     }
@@ -118,11 +128,9 @@ class MockAttendanceService implements AttendanceService {
     return closed;
   }
 
-  int _generationCounter = 0;
-
   @override
   Future<QrTicketModel> getNextQrTicket(String sessionId) async {
-    await Future.delayed(const Duration(milliseconds: 100));
+    await _delay(100);
     _generationCounter++;
     final now = DateTime.now();
     final expiresAt = now.add(const Duration(seconds: 30));
