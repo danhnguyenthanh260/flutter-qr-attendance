@@ -7,6 +7,7 @@ import '../../core/utils/debouncer.dart';
 import '../../data/models/class_model.dart';
 import '../../data/models/session_model.dart';
 import '../../providers/session_provider.dart';
+import 'qr_display_view.dart';
 
 class SessionSelectionView extends StatefulWidget {
   const SessionSelectionView({super.key});
@@ -17,6 +18,7 @@ class SessionSelectionView extends StatefulWidget {
 
 class _SessionSelectionViewState extends State<SessionSelectionView> {
   final Debouncer _debouncer = Debouncer(milliseconds: 600);
+  bool _showQrScreen = false;
 
   @override
   void initState() {
@@ -39,6 +41,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
     _debouncer.run(() async {
       final success = await provider.startSession();
       if (mounted && success) {
+        setState(() => _showQrScreen = true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: AppColors.success,
@@ -59,6 +62,12 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
   Widget build(BuildContext context) {
     return Consumer<SessionProvider>(
       builder: (context, provider, child) {
+        if (provider.hasActiveSession && _showQrScreen) {
+          return QrDisplayView(
+            onBackToSelection: () => setState(() => _showQrScreen = false),
+          );
+        }
+
         if (provider.isLoading) {
           return const Center(
             child: Column(
@@ -505,13 +514,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Chuyển tới trình chiếu QR (Sẽ hoàn thiện ở Issue #10)'),
-                ),
-              );
-            },
+            onPressed: () => setState(() => _showQrScreen = true),
             icon: const Icon(Icons.qr_code, size: 18),
             label: const Text('Xem mã QR'),
           ),
