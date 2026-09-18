@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:provider/provider.dart';
 import 'core/constants/app_colors.dart';
+import 'providers/session_provider.dart';
 import 'views/shell/app_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('vi_VN', null);
-  runApp(const QrAttendanceApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => SessionProvider()),
+      ],
+      child: const QrAttendanceApp(),
+    ),
+  );
 }
 
 class QrAttendanceApp extends StatelessWidget {
