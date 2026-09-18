@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../data/models/session_model.dart';
 import '../../providers/session_provider.dart';
 
 class QrDisplayView extends StatefulWidget {
@@ -51,42 +52,148 @@ class _QrDisplayViewState extends State<QrDisplayView>
   void _showEndSessionDialog(SessionProvider provider) {
     showDialog(
       context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        bool isClosing = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+                  SizedBox(width: 10),
+                  Text('Kết thúc phiên điểm danh?'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Khi kết thúc, hệ thống sẽ dừng phát mã QR ngay lập tức và gửi yêu cầu chốt danh sách điểm danh lên máy chủ.',
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Lưu ý: Hệ thống sẽ đợi máy chủ xác nhận xử lý các form đang nộp dở, không chốt vắng sớm.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                  if (isClosing) ...[
+                    const SizedBox(height: 20),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                        SizedBox(width: 12),
+                        Text('Đang chốt phiên trên máy chủ...'),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isClosing ? null : () => Navigator.of(ctx).pop(),
+                  child: const Text('Hủy bỏ'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: isClosing
+                      ? null
+                      : () async {
+                          setDialogState(() => isClosing = true);
+                          final nav = Navigator.of(ctx);
+                          final messenger = ScaffoldMessenger.of(this.context);
+                          final sessionSnapshot = provider.activeSession;
+                          final success = await provider.closeSession();
+                          if (!mounted) return;
+                          nav.pop();
+
+                          if (success) {
+                            widget.onBackToSelection();
+                            if (sessionSnapshot != null) {
+                              _showSessionSummaryDialog(sessionSnapshot);
+                            }
+                          } else {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                backgroundColor: AppColors.error,
+                                content: Text(
+                                  provider.errorMessage ?? 'Không thể đóng phiên. Vui lòng thử lại.',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                  child: Text(isClosing ? 'Đang xử lý...' : 'Đóng phiên ngay'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showSessionSummaryDialog(AttendanceSession session) {
+    final timeFormat = DateFormat('HH:mm:ss');
+    showDialog(
+      context: context,
       builder: (ctx) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+            Icon(Icons.check_circle, color: AppColors.success),
             SizedBox(width: 10),
-            Text('Kết thúc phiên điểm danh?'),
+            Text('Đã chốt phiên thành công!'),
           ],
         ),
-        content: const Text(
-          'Khi kết thúc, hệ thống sẽ dừng phát mã QR và tiến hành chốt danh sách điểm danh cho buổi học này.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Phiên điểm danh cho lớp ${session.className} đã hoàn tất và lưu trữ an toàn.',
+              style: AppTypography.bodyRegular,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Mã phiên: ${session.id}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text('Thời gian mở: ${timeFormat.format(session.openedAt)}'),
+                  const SizedBox(height: 4),
+                  Text('Thời gian đóng: ${timeFormat.format(DateTime.now())}'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '👉 Bạn có thể chuyển sang tab "Bảng điểm danh" (Người 2) để xem danh sách sinh viên có mặt và vắng đã chốt.',
+              style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w500),
+            ),
+          ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Hủy bỏ'),
-          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
             ),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              final success = await provider.closeSession();
-              if (!mounted) return;
-              if (success) {
-                widget.onBackToSelection();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    backgroundColor: AppColors.primary,
-                    content: Text('Đã đóng phiên điểm danh thành công!'),
-                  ),
-                );
-              }
-            },
-            child: const Text('Đóng phiên'),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Hoàn tất'),
           ),
         ],
       ),
