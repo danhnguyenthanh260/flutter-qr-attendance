@@ -1,0 +1,8 @@
+{
+  "name": "flutter-qr-attendance-apps-script",
+  "private": true,
+  "scripts": {
+    "check": "node --check src/attendance_domain.js && node --check src/sheets_gateway.js && node --check src/attendance_repository.js && node --check src/attendance_service.js && node --check src/attendance_config.js && node --check src/teacher_api.js",
+    "test": "node --test test/attendance_data.test.js"
+  }
+}
