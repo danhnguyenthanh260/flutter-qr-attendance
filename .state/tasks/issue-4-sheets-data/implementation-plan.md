@@ -34,7 +34,7 @@ Implement the #4 Sheets data layer and #9 teacher API contract without relying o
 1. Define JSON envelopes, error codes, sheet headers, and immutable IDs. Exit: contract covers class, slot, session, roster, raw response, attendance, attempt, and ticket state.
 2. Implement Apps Script repositories and web API with explicit config/auth failure behavior. Exit: fake-store tests prove email normalization, idempotent writes, missing-roster errors, and authorization boundaries.
 3. Implement a Flutter HTTP adapter behind AttendanceService. Exit: request/response mapping and non-2xx/error envelopes are unit tested.
-4. Run focused tests, flutter test, and flutter analyze. Exit: completed on 2026-09-19: Apps Script check/test (6 tests), Flutter test (14 tests), and Flutter analyze (no issues). Windows build was attempted but is blocked by missing Visual Studio C++ components; live runtime verification remains explicitly pending.
+4. Run focused tests, flutter test, and flutter analyze. Exit: completed on 2026-09-19: Apps Script check/test (6 tests), Flutter test (14 tests), Flutter analyze (no issues), successful Windows build, and a responsive Release executable launch. Live external-service verification remains explicitly pending.
 
 ## Data and API safety
 
