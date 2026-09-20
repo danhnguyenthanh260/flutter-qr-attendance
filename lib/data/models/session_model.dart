@@ -6,14 +6,11 @@ enum SessionStatus {
 }
 
 class SessionSlot {
-  // The server uses this ID to connect the selected slot to a Sessions row.
-  final String? id;
   final int slotNumber;
   final String timeRange;
   final String date;
 
   const SessionSlot({
-    this.id,
     required this.slotNumber,
     required this.timeRange,
     required this.date,
@@ -21,7 +18,6 @@ class SessionSlot {
 
   factory SessionSlot.fromJson(Map<String, dynamic> json) {
     return SessionSlot(
-      id: json['id'] as String?,
       slotNumber: json['slot_number'] as int,
       timeRange: json['time_range'] as String,
       date: json['date'] as String,
@@ -30,7 +26,6 @@ class SessionSlot {
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
       'slot_number': slotNumber,
       'time_range': timeRange,
       'date': date,
@@ -58,9 +53,6 @@ class AttendanceSession {
   final DateTime? closedAt;
   final SessionStatus status;
 
-  // The server-generated token is embedded in the QR payload.
-  final String? token;
-
   const AttendanceSession({
     required this.id,
     required this.classId,
@@ -69,7 +61,6 @@ class AttendanceSession {
     required this.openedAt,
     this.closedAt,
     this.status = SessionStatus.active,
-    this.token,
   });
 
   AttendanceSession copyWith({
@@ -80,7 +71,6 @@ class AttendanceSession {
     DateTime? openedAt,
     DateTime? closedAt,
     SessionStatus? status,
-    String? token,
   }) {
     return AttendanceSession(
       id: id ?? this.id,
@@ -90,7 +80,6 @@ class AttendanceSession {
       openedAt: openedAt ?? this.openedAt,
       closedAt: closedAt ?? this.closedAt,
       status: status ?? this.status,
-      token: token ?? this.token,
     );
   }
 
@@ -108,7 +97,6 @@ class AttendanceSession {
         (e) => e.name == json['status'],
         orElse: () => SessionStatus.active,
       ),
-      token: json['token'] as String?,
     );
   }
 
@@ -121,7 +109,6 @@ class AttendanceSession {
       'opened_at': openedAt.toIso8601String(),
       'closed_at': closedAt?.toIso8601String(),
       'status': status.name,
-      'token': token,
     };
   }
 }
