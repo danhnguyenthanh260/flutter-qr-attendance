@@ -13,7 +13,9 @@ class SessionProvider extends ChangeNotifier {
   SessionProvider({
     AttendanceService? service,
     SessionStorage? storage,
-  })  : _service = service ?? MockAttendanceService(),
+  })  : _service = service ?? GoogleSheetAttendanceService(),
+        // Keep this commented fallback so the original mock mode remains visible.
+        // _service = service ?? MockAttendanceService(),
         _storage = storage ?? LocalFileSessionStorage();
 
   List<ClassModel> _classes = [];
