@@ -29,7 +29,6 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
     }
     return {
       formId: requireScriptProperty_(properties, 'ATTENDANCE_FORM_ID'),
-      emailItemId: Number(requireScriptProperty_(properties, 'ATTENDANCE_FORM_EMAIL_ITEM_ID')),
       grantItemId: Number(requireScriptProperty_(properties, 'ATTENDANCE_FORM_GRANT_ITEM_ID')),
       webAppUrl: requireScriptProperty_(properties, 'ATTENDANCE_WEB_APP_URL'),
       graceSeconds: graceSeconds,
