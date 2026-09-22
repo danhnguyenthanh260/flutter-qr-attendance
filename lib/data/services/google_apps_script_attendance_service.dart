@@ -195,14 +195,17 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
-    final initialResponse = await _client.post(
-      _endpoint,
-      headers: const {'content-type': 'application/json'},
-      body: jsonEncode({
+    final request = http.Request('POST', _endpoint)
+      ..followRedirects = false
+      ..maxRedirects = 0
+      ..headers['content-type'] = 'application/json'
+      ..body = jsonEncode({
         'action': action,
         'teacher_key': _teacherKey,
         ...body,
-      }),
+      });
+    final initialResponse = await http.Response.fromStream(
+      await _client.send(request),
     );
     final response = await _followAppsScriptPostRedirect(initialResponse);
     return _decodeEnvelope(response, action);
