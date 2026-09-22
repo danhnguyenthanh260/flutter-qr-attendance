@@ -93,54 +93,59 @@ void main() {
     expect(session.status, SessionStatus.closing);
   });
 
-  test('follows the Apps Script ContentService redirect after a POST', () async {
-    final client = MockClient((request) async {
-      if (request.method == 'POST') {
+  test(
+    'follows the Apps Script ContentService redirect after a POST',
+    () async {
+      final client = MockClient((request) async {
+        if (request.method == 'POST') {
+          expect(request.followRedirects, isFalse);
+          expect(request.maxRedirects, 0);
+          return http.Response(
+            '',
+            302,
+            headers: const {
+              'location': 'https://script.googleusercontent.com/macros/echo?ticket=short-lived',
+            },
+          );
+        }
+
+        expect(request.method, 'GET');
+        expect(request.url.host, 'script.googleusercontent.com');
         expect(request.followRedirects, isFalse);
         expect(request.maxRedirects, 0);
         return http.Response(
-          '',
-          302,
-          headers: const {
-            'location': 'https://script.googleusercontent.com/macros/echo?ticket=short-lived',
-          },
-        );
-      }
-
-      expect(request.method, 'GET');
-      expect(request.url.host, 'script.googleusercontent.com');
-      return http.Response(
-        jsonEncode({
-          'ok': true,
-          'data': {
-            'id': 'SES_REDIRECT',
-            'class_id': 'CLASS_1',
-            'class_name': 'PRM392 - Flutter',
-            'slot': {
-              'slot_number': 2,
-              'time_range': '09:15 - 10:45',
-              'date': '2026-09-19',
+          jsonEncode({
+            'ok': true,
+            'data': {
+              'id': 'SES_REDIRECT',
+              'class_id': 'CLASS_1',
+              'class_name': 'PRM392 - Flutter',
+              'slot': {
+                'slot_number': 2,
+                'time_range': '09:15 - 10:45',
+                'date': '2026-09-19',
+              },
+              'opened_at': '2026-09-19T08:00:00.000Z',
+              'closed_at': null,
+              'status': 'active',
             },
-            'opened_at': '2026-09-19T08:00:00.000Z',
-            'closed_at': null,
-            'status': 'active',
-          },
-        }),
-        200,
+          }),
+          200,
+        );
+      });
+
+      final session = await createService(client).startSession(
+        classId: 'CLASS_1',
+        slot: const SessionSlot(
+          slotNumber: 2,
+          timeRange: '09:15 - 10:45',
+          date: '2026-09-19',
+        ),
       );
-    });
 
-    final session = await createService(client).startSession(
-      classId: 'CLASS_1',
-      slot: const SessionSlot(
-        slotNumber: 2,
-        timeRange: '09:15 - 10:45',
-        date: '2026-09-19',
-      ),
-    );
-
-    expect(session.id, 'SES_REDIRECT');
-  });
+      expect(session.id, 'SES_REDIRECT');
+    },
+  );
 
   test('follows the Apps Script ContentService redirect after a GET', () async {
     final client = MockClient((request) async {
@@ -222,6 +227,56 @@ void main() {
     expect(contentRequests, 2);
   });
 
+  test('follows a second trusted ContentService redirect without a client loop', () async {
+    var contentRequests = 0;
+    final client = MockClient((request) async {
+      expect(request.followRedirects, isFalse);
+      expect(request.maxRedirects, 0);
+      if (request.url.host == 'script.google.com') {
+        return http.Response(
+          '',
+          302,
+          headers: const {
+            'location':
+                'https://script.googleusercontent.com/macros/echo?ticket=first',
+          },
+        );
+      }
+
+      contentRequests++;
+      if (contentRequests == 1) {
+        return http.Response(
+          '',
+          302,
+          headers: const {
+            'location': 'https://script.googleusercontent.com/macros/echo?ticket=second',
+          },
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'ok': true,
+          'data': [
+            {
+              'id': 'CLASS_1',
+              'name': 'Flutter',
+              'course_code': 'PRM392',
+              'room': 'BE-302',
+              'total_students': 32,
+              'schedule_description': 'Slot 2',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    final classes = await createService(client).getClasses();
+
+    expect(classes.single.id, 'CLASS_1');
+    expect(contentRequests, 2);
+  });
+
   test('surfaces API envelopes as typed errors', () async {
     final client = MockClient((request) async {
       return http.Response(
@@ -241,7 +296,11 @@ void main() {
       throwsA(
         isA<TeacherApiException>()
             .having((error) => error.code, 'code', 'unauthorized')
-            .having((error) => error.message, 'message', 'Teacher authentication failed.'),
+            .having(
+              (error) => error.message,
+              'message',
+              'Teacher authentication failed.',
+            ),
       ),
     );
   });
