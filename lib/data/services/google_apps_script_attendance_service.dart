@@ -176,8 +176,22 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
         ...query,
       },
     );
-    final response = await _client.get(uri);
+    final response = await _getAppsScriptResponse(uri);
     return _decodeEnvelope(response, action);
+  }
+
+  /// Prevent the platform HTTP client from automatically following Apps
+  /// Script's redirect. On Windows that automatic hop can stall before the
+  /// response body arrives. The redirect is then followed explicitly using
+  /// the same trusted-host check as POST requests.
+  Future<http.Response> _getAppsScriptResponse(Uri uri) async {
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..maxRedirects = 0;
+    final initialResponse = await http.Response.fromStream(
+      await _client.send(request),
+    );
+    return _followAppsScriptPostRedirect(initialResponse);
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
@@ -195,9 +209,8 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   /// Apps Script's ContentService returns a 302 to a short-lived
-  /// script.googleusercontent.com URL after a POST. The default Dart HTTP
-  /// client leaves POST redirects unresolved, so follow that trusted URL with
-  /// a GET to obtain the JSON envelope.
+  /// script.googleusercontent.com URL. Follow only that trusted target with a
+  /// GET to obtain the JSON envelope.
   Future<http.Response> _followAppsScriptPostRedirect(
     http.Response response,
   ) async {
