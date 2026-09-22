@@ -77,7 +77,7 @@ var AttendanceFormGateway = (function (Domain) {
     createAttendanceForm: createAttendanceForm,
     ensureSubmitTrigger: ensureSubmitTrigger,
   };
-})(typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain);
+})(typeof module !== 'undefined' && module.exports ? require('./00_attendance_domain.js') : AttendanceDomain);
 
 function onAttendanceFormSubmit(event) {
   var studentConfig = AttendanceConfig.getStudentFlowConfig();

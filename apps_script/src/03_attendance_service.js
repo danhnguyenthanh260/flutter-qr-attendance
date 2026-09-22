@@ -102,7 +102,7 @@ var AttendanceDataService = (function (Repository) {
       return new Service(gateway, options);
     },
   };
-})(typeof module !== 'undefined' && module.exports ? require('./attendance_repository.js') : AttendanceRepository);
+})(typeof module !== 'undefined' && module.exports ? require('./02_attendance_repository.js') : AttendanceRepository);
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = AttendanceDataService;

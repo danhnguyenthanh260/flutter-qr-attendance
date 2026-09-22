@@ -61,8 +61,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
   return { execute: execute };
 })(
-  typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain,
-  typeof module !== 'undefined' && module.exports ? require('./student_attendance_service.js') : StudentAttendanceService
+  typeof module !== 'undefined' && module.exports ? require('./00_attendance_domain.js') : AttendanceDomain,
+  typeof module !== 'undefined' && module.exports ? require('./07_student_attendance_service.js') : StudentAttendanceService
 );
 
 function doGet(event) {

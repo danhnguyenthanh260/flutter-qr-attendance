@@ -65,7 +65,7 @@ var StudentAttendanceService = (function (Domain) {
     buildClaimUrl: buildClaimUrl,
     createClaimHtmlOutput: createClaimHtmlOutput,
   };
-})(typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain);
+})(typeof module !== 'undefined' && module.exports ? require('./00_attendance_domain.js') : AttendanceDomain);
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = StudentAttendanceService;

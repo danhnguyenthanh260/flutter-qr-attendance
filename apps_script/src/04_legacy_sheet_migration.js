@@ -258,7 +258,7 @@ var AttendanceLegacyMigration = (function (Domain) {
     createPlan: createPlan,
     migrate: migrate,
   };
-})(typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain);
+})(typeof module !== 'undefined' && module.exports ? require('./00_attendance_domain.js') : AttendanceDomain);
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = AttendanceLegacyMigration;
