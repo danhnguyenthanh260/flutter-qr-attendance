@@ -38,6 +38,7 @@ var AttendanceRepository = (function (Domain) {
       })
       .map(function (record) {
         return {
+          id: record.slot_id,
           slot_number: Domain.asInteger(record.slot_number, 'slot_number'),
           time_range: record.time_range,
           date: record.session_date,

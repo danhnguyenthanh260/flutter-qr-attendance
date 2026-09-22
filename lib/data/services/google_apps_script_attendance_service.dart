@@ -181,7 +181,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
-    final response = await _client.post(
+    final initialResponse = await _client.post(
       _endpoint,
       headers: const {'content-type': 'application/json'},
       body: jsonEncode({
@@ -190,7 +190,30 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
         ...body,
       }),
     );
+    final response = await _followAppsScriptPostRedirect(initialResponse);
     return _decodeEnvelope(response, action);
+  }
+
+  /// Apps Script's ContentService returns a 302 to a short-lived
+  /// script.googleusercontent.com URL after a POST. The default Dart HTTP
+  /// client leaves POST redirects unresolved, so follow that trusted URL with
+  /// a GET to obtain the JSON envelope.
+  Future<http.Response> _followAppsScriptPostRedirect(
+    http.Response response,
+  ) async {
+    final location = response.headers['location'];
+    if (response.statusCode != 302 || location == null) {
+      return response;
+    }
+
+    final redirectUri = Uri.tryParse(location);
+    if (redirectUri == null ||
+        redirectUri.scheme != 'https' ||
+        redirectUri.host != 'script.googleusercontent.com') {
+      return response;
+    }
+
+    return _client.get(redirectUri);
   }
 
   dynamic _decodeEnvelope(http.Response response, String action) {
