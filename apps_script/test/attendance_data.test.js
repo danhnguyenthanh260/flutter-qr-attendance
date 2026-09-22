@@ -8,6 +8,7 @@ const DataService = require('../src/attendance_service.js');
 const TeacherApiContract = require('../src/teacher_api.js');
 const StudentAttendanceService = require('../src/student_attendance_service.js');
 const LegacyMigration = require('../src/legacy_sheet_migration.js');
+const AttendanceFormGateway = require('../src/attendance_form.js');
 
 class MemorySheetGateway {
   constructor() {
@@ -360,6 +361,23 @@ test('creates a canonical seed plan from the legacy Slot and Class tabs without 
   assert.equal(plan.classSlots[0].time_range, '09:15 - 10:45');
   assert.equal(plan.roster.length, 1);
   assert.equal(plan.roster[0].email_key, 'student@example.edu');
+});
+
+test('uses the authenticated Form respondent email instead of a manually supplied value', () => {
+  const submission = AttendanceFormGateway.parseSubmission({
+    response: {
+      getId: () => 'FORM_1',
+      getTimestamp: () => new Date('2026-09-22T08:00:00.000Z'),
+      getRespondentEmail: () => 'SignedIn@Example.edu',
+      getItemResponses: () => [{
+        getItem: () => ({ getId: () => 42 }),
+        getResponse: () => 'GRANT_1',
+      }],
+    },
+  }, { grantItemId: 42 });
+
+  assert.equal(submission.email, 'SignedIn@Example.edu');
+  assert.equal(submission.grant_id, 'GRANT_1');
 });
 
 test('teacher API issues a server-side QR claim URL only with teacher authentication', () => {
