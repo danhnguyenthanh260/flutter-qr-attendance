@@ -34,9 +34,6 @@ session_cache.json
 .pub/
 /build/
 /coverage/
-.env
-.env.*
-!.env.example
 
 # Symbolication related
 app.*.symbols
