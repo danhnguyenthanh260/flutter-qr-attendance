@@ -7,14 +7,40 @@ class StudentAttendanceRow {
   final RosterEntry student;
   final StudentAttendanceStatus status;
   final DateTime? acceptedAt;
+  final int retryCount;
+  final int rejectedCount;
 
   const StudentAttendanceRow({
     required this.student,
     required this.status,
     this.acceptedAt,
+    this.retryCount = 0,
+    this.rejectedCount = 0,
   });
 
   bool get isPresent => status == StudentAttendanceStatus.present;
+  int get attemptCount => retryCount + rejectedCount;
+}
+
+class RetryEvent {
+  final AttendanceAttempt attempt;
+  final String displayName;
+  final bool isOnRoster;
+  final String? originalAttendanceId;
+  final DateTime? originalAcceptedAt;
+
+  const RetryEvent({
+    required this.attempt,
+    required this.displayName,
+    required this.isOnRoster,
+    this.originalAttendanceId,
+    this.originalAcceptedAt,
+  });
+
+  String get id => attempt.id;
+  String get sessionId => attempt.sessionId;
+  DateTime? get occurredAt => attempt.occurredAt;
+  bool get hasOriginalSubmission => originalAttendanceId != null;
 }
 
 class UnlistedSubmission {
@@ -50,6 +76,7 @@ class AttendanceSummary {
   final AttendanceScope scope;
   final AttendanceSession session;
   final List<StudentAttendanceRow> rows;
+  final List<RetryEvent> retryEvents;
   final List<UnlistedSubmission> unlistedSubmissions;
   final DateTime asOf;
 
@@ -57,6 +84,7 @@ class AttendanceSummary {
     required this.scope,
     required this.session,
     required this.rows,
+    required this.retryEvents,
     required this.unlistedSubmissions,
     required this.asOf,
   });
@@ -82,6 +110,11 @@ class AttendanceSummary {
 
   int get pendingCount => isFinalized ? absentCount : notYetCount;
 
+  int get retryEventCount => retryEvents.length;
+
+  int get retryStudentCount =>
+      retryEvents.map((event) => event.attempt.emailKey).toSet().length;
+
   double? get attendanceRate =>
       totalStudents == 0 ? null : presentCount / totalStudents;
 
@@ -96,6 +129,14 @@ class AttendanceSummary {
     final acceptedByKey = _earliestAcceptedByEmail(results.attendance);
     final finalized = session.status == SessionStatus.closed;
 
+    final retryCounts = <String, int>{};
+    final rejectedCounts = <String, int>{};
+    for (final attempt in results.attempts) {
+      final counter =
+          attempt.isRetryOfAcceptedSubmission ? retryCounts : rejectedCounts;
+      counter[attempt.emailKey] = (counter[attempt.emailKey] ?? 0) + 1;
+    }
+
     final rows = results.roster.map((student) {
       final accepted = acceptedByKey[student.emailKey];
       final status = accepted != null
@@ -108,9 +149,26 @@ class AttendanceSummary {
         student: student,
         status: status,
         acceptedAt: accepted?.acceptedAt,
+        retryCount: retryCounts[student.emailKey] ?? 0,
+        rejectedCount: rejectedCounts[student.emailKey] ?? 0,
       );
     }).toList()
       ..sort(_compareRows);
+
+    final retryEvents = results.attempts.map((attempt) {
+      final student = rosterByKey[attempt.emailKey];
+      final accepted = acceptedByKey[attempt.emailKey];
+      return RetryEvent(
+        attempt: attempt,
+        displayName: student?.displayName ??
+            accepted?.displayName ??
+            (attempt.email.isEmpty ? 'Không rõ' : attempt.email),
+        isOnRoster: student != null,
+        originalAttendanceId: accepted?.id,
+        originalAcceptedAt: accepted?.acceptedAt,
+      );
+    }).toList()
+      ..sort(_compareRetryEvents);
 
     final unlisted = acceptedByKey.entries
         .where((entry) => !rosterByKey.containsKey(entry.key))
@@ -129,6 +187,7 @@ class AttendanceSummary {
       ),
       session: session,
       rows: List.unmodifiable(rows),
+      retryEvents: List.unmodifiable(retryEvents),
       unlistedSubmissions: List.unmodifiable(unlisted),
       asOf: asOf ?? results.fetchedAt,
     );
@@ -161,5 +220,15 @@ class AttendanceSummary {
         .toLowerCase()
         .compareTo(b.student.displayName.toLowerCase());
     return byName != 0 ? byName : a.student.email.compareTo(b.student.email);
+  }
+
+  static int _compareRetryEvents(RetryEvent a, RetryEvent b) {
+    final aAt = a.occurredAt;
+    final bAt = b.occurredAt;
+    if (aAt == null && bAt == null) return a.id.compareTo(b.id);
+    if (aAt == null) return 1;
+    if (bAt == null) return -1;
+    final byTime = bAt.compareTo(aAt);
+    return byTime != 0 ? byTime : a.id.compareTo(b.id);
   }
 }

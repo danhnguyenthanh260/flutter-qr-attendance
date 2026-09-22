@@ -12,6 +12,7 @@ class AttendanceSummaryCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rate = summary.attendanceRate;
+    final finalized = summary.isFinalized;
 
     final cards = <_StatCardData>[
       _StatCardData(
@@ -32,30 +33,41 @@ class AttendanceSummaryCards extends StatelessWidget {
         color: AppColors.success,
         background: AppColors.successBg,
       ),
-      if (summary.isFinalized)
-        _StatCardData(
-          icon: Icons.person_off_outlined,
-          label: 'Vắng',
-          value: '${summary.absentCount}',
-          caption: 'Đã chốt sổ, số liệu cuối cùng',
-          color: AppColors.error,
-          background: AppColors.errorBg,
-        )
-      else
-        _StatCardData(
-          icon: Icons.hourglass_bottom_rounded,
-          label: 'Chưa điểm danh',
-          value: '${summary.notYetCount}',
-          caption: 'Chỉ tính vắng sau khi chốt phiên',
-          color: AppColors.warning,
-          background: AppColors.warningBg,
-        ),
+      finalized
+          ? _StatCardData(
+              icon: Icons.person_off_outlined,
+              label: 'Vắng',
+              value: '${summary.absentCount}',
+              caption: 'Đã chốt sổ, số liệu cuối cùng',
+              color: AppColors.error,
+              background: AppColors.errorBg,
+            )
+          : _StatCardData(
+              icon: Icons.hourglass_bottom_rounded,
+              label: 'Chưa điểm danh',
+              value: '${summary.notYetCount}',
+              caption: 'Chỉ tính vắng sau khi chốt phiên',
+              color: AppColors.warning,
+              background: AppColors.warningBg,
+            ),
+      _StatCardData(
+        icon: Icons.replay_rounded,
+        label: 'Lượt nộp lại',
+        value: '${summary.retryEventCount}',
+        caption: '${summary.retryStudentCount} sinh viên, không tính vào có mặt',
+        color: AppColors.info,
+        background: const Color(0xFFF0F9FF),
+      ),
     ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
         const spacing = 16.0;
-        final columns = constraints.maxWidth >= 860 ? 3 : 1;
+        final columns = constraints.maxWidth >= 980
+            ? 4
+            : constraints.maxWidth >= 560
+                ? 2
+                : 1;
         final cardWidth =
             (constraints.maxWidth - spacing * (columns - 1)) / columns;
 

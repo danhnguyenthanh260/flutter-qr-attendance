@@ -195,6 +195,10 @@ class _AttendanceRosterTableState extends State<AttendanceRosterTable> {
             width: 120,
             child: Text('Ghi nhận lúc', style: AppTypography.caption),
           ),
+          SizedBox(
+            width: 92,
+            child: Text('Nộp lại', style: AppTypography.caption),
+          ),
         ],
       ),
     );
@@ -242,6 +246,20 @@ class _AttendanceRosterTableState extends State<AttendanceRosterTable> {
               row.acceptedAt == null ? '—' : _timeFormat.format(row.acceptedAt!),
               style: AppTypography.bodySecondary,
             ),
+          ),
+          SizedBox(
+            width: 92,
+            child: row.attemptCount == 0
+                ? const Text('—', style: AppTypography.caption)
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: AttendanceChip(
+                      label: '${row.attemptCount}',
+                      color: AppColors.info,
+                      background: const Color(0xFFF0F9FF),
+                      icon: Icons.replay_rounded,
+                    ),
+                  ),
           ),
         ],
       ),

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../core/utils/date_key.dart';
+import '../data/models/attendance_result_model.dart';
 import '../data/models/attendance_summary.dart';
 import '../data/models/class_model.dart';
 import '../data/models/session_model.dart';
@@ -18,31 +21,41 @@ enum AttendanceDataStatus {
 }
 
 class AttendanceResultsProvider extends ChangeNotifier {
+  static const Duration defaultRefreshInterval = Duration(seconds: 12);
+
   final AttendanceService _service;
   final DateTime Function() _clock;
+  final Duration refreshInterval;
 
   List<ClassModel> _classes = const [];
   ClassModel? _selectedClass;
   String _selectedDate = '';
   List<AttendanceSession> _sessions = const [];
   AttendanceSession? _selectedSession;
+  SessionResults? _snapshot;
   AttendanceSummary? _summary;
 
   AttendanceDataStatus _status = AttendanceDataStatus.loading;
   String? _errorMessage;
+  String? _refreshErrorMessage;
   DateTime? _lastUpdatedAt;
 
   bool _isInitialized = false;
   bool _isRefreshing = false;
+  bool _autoRefreshEnabled;
   bool _isDisposed = false;
 
+  Timer? _refreshTimer;
   int _requestToken = 0;
 
   AttendanceResultsProvider({
     AttendanceService? service,
     DateTime Function()? clock,
+    bool autoRefresh = true,
+    this.refreshInterval = defaultRefreshInterval,
   })  : _service = service ?? createConfiguredTeacherAttendanceService(),
-        _clock = clock ?? DateTime.now {
+        _clock = clock ?? DateTime.now,
+        _autoRefreshEnabled = autoRefresh {
     _selectedDate = dateKey(_clock());
   }
 
@@ -54,11 +67,17 @@ class AttendanceResultsProvider extends ChangeNotifier {
   AttendanceSummary? get summary => _summary;
   AttendanceDataStatus get status => _status;
   String? get errorMessage => _errorMessage;
+  String? get refreshErrorMessage => _refreshErrorMessage;
   DateTime? get lastUpdatedAt => _lastUpdatedAt;
   bool get isInitialized => _isInitialized;
   bool get isRefreshing => _isRefreshing;
+  bool get autoRefreshEnabled => _autoRefreshEnabled;
   bool get hasData => _summary != null;
   bool get isToday => _selectedDate == dateKey(_clock());
+
+  bool get canAutoRefresh =>
+      _selectedSession != null &&
+      _selectedSession!.status != SessionStatus.closed;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
@@ -103,9 +122,12 @@ class AttendanceResultsProvider extends ChangeNotifier {
   Future<void> selectSession(AttendanceSession? session) async {
     if (session == null || session.id == _selectedSession?.id) return;
     _selectedSession = session;
+    _snapshot = null;
     _summary = null;
+    _refreshErrorMessage = null;
     _lastUpdatedAt = null;
     await _loadResults(++_requestToken);
+    _scheduleNextRefresh();
   }
 
   Future<void> refresh() async {
@@ -115,15 +137,36 @@ class AttendanceResultsProvider extends ChangeNotifier {
     }
     if (_isRefreshing) return;
     await _loadResults(_requestToken);
+    _scheduleNextRefresh();
+  }
+
+  void setAutoRefresh(bool enabled) {
+    if (_autoRefreshEnabled == enabled) return;
+    _autoRefreshEnabled = enabled;
+    if (enabled) {
+      _scheduleNextRefresh();
+    } else {
+      _cancelTimer();
+    }
+    _notify();
+  }
+
+  void clearRefreshError() {
+    if (_refreshErrorMessage == null) return;
+    _refreshErrorMessage = null;
+    _notify();
   }
 
   Future<void> _reloadScope() async {
     final token = ++_requestToken;
+    _cancelTimer();
 
     _status = AttendanceDataStatus.loading;
+    _snapshot = null;
     _summary = null;
     _selectedSession = null;
     _errorMessage = null;
+    _refreshErrorMessage = null;
     _lastUpdatedAt = null;
     _notify();
 
@@ -153,6 +196,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
     }
 
     await _loadResults(token);
+    _scheduleNextRefresh();
   }
 
   Future<void> _loadResults(int token) async {
@@ -169,22 +213,32 @@ class AttendanceResultsProvider extends ChangeNotifier {
       final results = await _service.getSessionResults(session.id);
       if (token != _requestToken) return;
 
-      _summary = AttendanceSummary.fromSessionResults(results);
-      _selectedSession = results.session;
-      _syncSessionInList(results.session);
-      _lastUpdatedAt = results.fetchedAt;
+      final previous = _snapshot;
+      final merged = previous == null ? results : previous.mergeWith(results);
+
+      _snapshot = merged;
+      _summary = AttendanceSummary.fromSessionResults(merged);
+      _selectedSession = merged.session;
+      _syncSessionInList(merged.session);
+      _lastUpdatedAt = merged.fetchedAt;
       _status = AttendanceDataStatus.ok;
       _errorMessage = null;
+      _refreshErrorMessage = null;
     } catch (error) {
       if (token != _requestToken) return;
 
-      _summary = null;
       if (error is AttendanceApiException && error.isRosterMissing) {
+        _snapshot = null;
+        _summary = null;
         _status = AttendanceDataStatus.rosterMissing;
+        _errorMessage = error.message;
+        _refreshErrorMessage = null;
+      } else if (_summary != null) {
+        _refreshErrorMessage = _describe(error);
       } else {
         _status = AttendanceDataStatus.unavailable;
+        _errorMessage = _describe(error);
       }
-      _errorMessage = _describe(error);
     } finally {
       if (token == _requestToken) {
         _isRefreshing = false;
@@ -212,6 +266,17 @@ class AttendanceResultsProvider extends ChangeNotifier {
     _sessions = updated;
   }
 
+  void _scheduleNextRefresh() {
+    _cancelTimer();
+    if (!_autoRefreshEnabled || !canAutoRefresh) return;
+    _refreshTimer = Timer(refreshInterval, refresh);
+  }
+
+  void _cancelTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
   String _describe(Object error) {
     if (error is AttendanceApiException) return error.message;
     return error.toString().replaceFirst('Exception: ', '');
@@ -224,6 +289,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _cancelTimer();
     super.dispose();
   }
 }
