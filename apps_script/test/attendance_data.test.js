@@ -6,6 +6,7 @@ const Repository = require('../src/attendance_repository.js');
 const DataService = require('../src/attendance_service.js');
 const TeacherApiContract = require('../src/teacher_api.js');
 const StudentAttendanceService = require('../src/student_attendance_service.js');
+const LegacyMigration = require('../src/legacy_sheet_migration.js');
 
 class MemorySheetGateway {
   constructor() {
@@ -334,6 +335,30 @@ test('teacher API requires the configured key and returns typed data envelopes',
   assert.equal(result.ok, true);
   assert.equal(result.data.length, 2);
   assert.equal(result.data[0].roster_status, 'available');
+});
+
+test('creates a canonical seed plan from the legacy Slot and Class tabs without importing old attendance', () => {
+  const plan = LegacyMigration.createPlan([
+    {
+      id: 'SLOT_01', classId: 'Class_001', date: '2026-09-22', slotNumber: 2,
+      startTime: '09:15', endTime: '10:45', subject: 'PRM392',
+    },
+  ], {
+    Class_001: [
+      { studentId: 'SE1', email: 'Student@Example.edu', fullName: 'Student One' },
+      { studentId: 'SE1-duplicate', email: 'student@example.edu', fullName: 'Ignored duplicate' },
+    ],
+  }, '2026-09-22T08:00:00.000Z');
+
+  assert.deepEqual(plan.classes, [{
+    class_id: 'Class_001', course_code: 'PRM392', name: 'PRM392', room: '',
+    schedule_description: '', is_active: 'true', created_at: '2026-09-22T08:00:00.000Z',
+    updated_at: '2026-09-22T08:00:00.000Z',
+  }]);
+  assert.equal(plan.classSlots.length, 1);
+  assert.equal(plan.classSlots[0].time_range, '09:15 - 10:45');
+  assert.equal(plan.roster.length, 1);
+  assert.equal(plan.roster[0].email_key, 'student@example.edu');
 });
 
 test('teacher API issues a server-side QR claim URL only with teacher authentication', () => {
