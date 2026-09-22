@@ -3,9 +3,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/config/app_config.dart';
+import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
+import 'attendance_api_exception.dart';
+import 'mock_attendance_data.dart';
 
 abstract class AttendanceService {
   Future<List<ClassModel>> getClasses();
@@ -17,19 +20,57 @@ abstract class AttendanceService {
   Future<AttendanceSession?> getActiveSession();
   Future<AttendanceSession> closeSession(String sessionId);
   Future<QrTicketModel> getNextQrTicket(String sessionId);
+  Future<List<AttendanceSession>> listSessions({String? classId, String? date});
+  Future<SessionResults> getSessionResults(String sessionId);
 }
 
 class MockAttendanceService implements AttendanceService {
   final bool simulateDelay;
+  final DateTime Function() _clock;
+  final List<AttendanceSession> _createdSessions = [];
+
   AttendanceSession? _activeSession;
   int _generationCounter = 0;
+  MockAttendanceDataset? _cachedDataset;
 
-  MockAttendanceService({this.simulateDelay = true});
+  MockAttendanceService({
+    this.simulateDelay = true,
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
+
+  MockAttendanceDataset get dataset => _cachedDataset ??= MockAttendanceDataset(
+        classes: _mockClasses,
+        today: _clock(),
+      );
+
+  void configureRoster(String classId, List<RosterEntry> roster) {
+    dataset.setRoster(classId, roster);
+  }
 
   Future<void> _delay(int ms) async {
     if (simulateDelay) {
       await Future.delayed(Duration(milliseconds: ms));
     }
+  }
+
+  void _trackSession(AttendanceSession session) {
+    final index =
+        _createdSessions.indexWhere((item) => item.id == session.id);
+    if (index >= 0) {
+      _createdSessions[index] = session;
+    } else {
+      _createdSessions.add(session);
+    }
+  }
+
+  AttendanceSession? _findSession(String sessionId) {
+    for (final session in _createdSessions) {
+      if (session.id == sessionId) return session;
+    }
+    for (final session in dataset.seededSessions) {
+      if (session.id == sessionId) return session;
+    }
+    return null;
   }
 
   List<ClassModel> _mockClasses = const [
@@ -61,6 +102,7 @@ class MockAttendanceService implements AttendanceService {
 
   void configureClasses(List<ClassModel> classes) {
     _mockClasses = classes;
+    _cachedDataset = null;
   }
 
   @override
@@ -72,13 +114,18 @@ class MockAttendanceService implements AttendanceService {
   @override
   Future<List<SessionSlot>> getSlotsForClass(String classId) async {
     await _delay(200);
-    final today = DateTime.now().toIso8601String().split('T').first;
-    return [
-      SessionSlot(slotNumber: 1, timeRange: '07:30 - 09:00', date: today),
-      SessionSlot(slotNumber: 2, timeRange: '09:15 - 10:45', date: today),
-      SessionSlot(slotNumber: 3, timeRange: '12:30 - 14:00', date: today),
-      SessionSlot(slotNumber: 4, timeRange: '14:15 - 15:45', date: today),
-    ];
+    final today = _clock().toIso8601String().split('T').first;
+    final compactDate = today.replaceAll('-', '');
+    return kMockSlotTimeRanges.entries
+        .map(
+          (entry) => SessionSlot(
+            id: 'SLOT_${classId}_${compactDate}_${entry.key}',
+            slotNumber: entry.key,
+            timeRange: entry.value,
+            date: today,
+          ),
+        )
+        .toList();
   }
 
   @override
@@ -101,15 +148,18 @@ class MockAttendanceService implements AttendanceService {
       orElse: () => throw Exception('Không tìm thấy thông tin lớp học'),
     );
 
-    final sessionId = 'SES_${classItem.courseCode}_${DateTime.now().millisecondsSinceEpoch}';
+    final now = _clock();
+    final sessionId =
+        'SES_${classItem.courseCode}_${now.millisecondsSinceEpoch}';
     _activeSession = AttendanceSession(
       id: sessionId,
       classId: classId,
       className: '${classItem.courseCode} - ${classItem.name}',
       slot: slot,
-      openedAt: DateTime.now(),
+      openedAt: now,
       status: SessionStatus.active,
     );
+    _trackSession(_activeSession!);
 
     return _activeSession!;
   }
@@ -127,11 +177,11 @@ class MockAttendanceService implements AttendanceService {
       throw Exception('Phiên không tồn tại hoặc đã kết thúc');
     }
 
-    _activeSession = _activeSession!.copyWith(
-      closedAt: DateTime.now(),
+    final closed = _activeSession!.copyWith(
+      closedAt: _clock(),
       status: SessionStatus.closed,
     );
-    final closed = _activeSession!;
+    _trackSession(closed);
     _activeSession = null;
     _generationCounter = 0;
     return closed;
@@ -155,6 +205,49 @@ class MockAttendanceService implements AttendanceService {
       createdAt: now,
       expiresAt: expiresAt,
     );
+  }
+
+  @override
+  Future<List<AttendanceSession>> listSessions({
+    String? classId,
+    String? date,
+  }) async {
+    await _delay(250);
+
+    final byId = <String, AttendanceSession>{};
+    for (final session in dataset.seededSessions) {
+      byId[session.id] = session;
+    }
+    for (final session in _createdSessions) {
+      byId[session.id] = session;
+    }
+
+    final matches = byId.values
+        .where(
+          (session) =>
+              (classId == null || session.classId == classId) &&
+              (date == null || session.slot.date == date),
+        )
+        .toList()
+      ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
+
+    return matches;
+  }
+
+  @override
+  Future<SessionResults> getSessionResults(String sessionId) async {
+    await _delay(250);
+
+    final session = _findSession(sessionId);
+    if (session == null) {
+      throw AttendanceApiException(
+        code: 'not_found',
+        message: 'Phiên điểm danh không tồn tại.',
+        details: {'session_id': sessionId},
+      );
+    }
+
+    return dataset.resultsFor(session, _clock());
   }
 }
 
@@ -520,5 +613,42 @@ class GoogleSheetAttendanceService implements AttendanceService {
 
     // Preserve the original mock QR fallback for non-remote sessions.
     return _mockService.getNextQrTicket(sessionId);
+  }
+
+  @override
+  Future<List<AttendanceSession>> listSessions({
+    String? classId,
+    String? date,
+  }) async {
+    final uri = Uri.parse(_baseUrl).replace(
+      queryParameters: {
+        'action': 'sessions',
+        'classId': ?classId,
+        'date': ?date,
+      },
+    );
+    final payload = await _get(uri);
+
+    return _dataList(payload)
+        .map((item) => AttendanceSession.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<SessionResults> getSessionResults(String sessionId) async {
+    final uri = Uri.parse(_baseUrl).replace(
+      queryParameters: {
+        'action': 'session_results',
+        'sessionId': sessionId,
+      },
+    );
+    final payload = await _get(uri);
+    final data = payload['data'];
+
+    if (data is! Map) {
+      throw Exception('Google Sheets trả về dữ liệu kết quả không hợp lệ');
+    }
+
+    return SessionResults.fromJson(Map<String, dynamic>.from(data));
   }
 }

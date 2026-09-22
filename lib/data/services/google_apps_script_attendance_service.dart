@@ -3,20 +3,18 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/config/app_config.dart';
+import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
+import 'attendance_api_exception.dart';
 import 'attendance_service.dart';
 
-class TeacherApiException implements Exception {
-  final String code;
-  final String message;
-  final Map<String, dynamic>? details;
-
+class TeacherApiException extends AttendanceApiException {
   const TeacherApiException({
-    required this.code,
-    required this.message,
-    this.details,
+    required super.code,
+    required super.message,
+    super.details,
   });
 
   @override
@@ -52,9 +50,21 @@ class ConfigurationRequiredAttendanceService implements AttendanceService {
     required String classId,
     required SessionSlot slot,
   }) async => _fail();
+
+  @override
+  Future<List<AttendanceSession>> listSessions({
+    String? classId,
+    String? date,
+  }) async => _fail();
+
+  @override
+  Future<SessionResults> getSessionResults(String sessionId) async => _fail();
 }
 
 AttendanceService createConfiguredTeacherAttendanceService() {
+  if (AppConfig.useSeededMockData) {
+    return MockAttendanceService(simulateDelay: false);
+  }
   if (!AppConfig.hasTeacherApiConfiguration) {
     return ConfigurationRequiredAttendanceService();
   }
@@ -162,6 +172,29 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   Future<QrTicketModel> getNextQrTicket(String sessionId) async {
     final data = await _post('issue_qr', {'session_id': sessionId});
     return QrTicketModel.fromJson(_asMap(data, 'issue_qr response'));
+  }
+
+  @override
+  Future<List<AttendanceSession>> listSessions({
+    String? classId,
+    String? date,
+  }) async {
+    final data = await _get('sessions', query: {
+      'class_id': ?classId,
+      'date': ?date,
+    });
+    return _asList(data, 'sessions')
+        .map((item) => AttendanceSession.fromJson(_asMap(item, 'session item')))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<SessionResults> getSessionResults(String sessionId) async {
+    final data = await _get('session_results', query: {'session_id': sessionId});
+    return SessionResults.fromJson(
+      _asMap(data, 'session_results response'),
+      fetchedAt: _clock(),
+    );
   }
 
   Future<dynamic> _get(

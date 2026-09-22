@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
-import '../attendance/attendance_placeholder_view.dart';
+import '../attendance/today_attendance_view.dart';
 import '../ai_assistant/ai_assistant_placeholder_view.dart';
 import '../session/session_selection_view.dart';
 
@@ -18,7 +18,7 @@ class _AppShellState extends State<AppShell> {
 
   final List<Widget> _views = const [
     SessionSelectionView(),
-    AttendancePlaceholderView(),
+    TodayAttendanceView(),
     AiAssistantPlaceholderView(),
   ];
 
