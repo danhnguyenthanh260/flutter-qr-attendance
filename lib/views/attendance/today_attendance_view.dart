@@ -13,6 +13,7 @@ import 'widgets/attendance_chips.dart';
 import 'widgets/attendance_roster_table.dart';
 import 'widgets/attendance_state_message.dart';
 import 'widgets/attendance_summary_cards.dart';
+import 'widgets/retry_events_panel.dart';
 
 class TodayAttendanceView extends StatefulWidget {
   const TodayAttendanceView({super.key});
@@ -129,15 +130,58 @@ class _TodayAttendanceViewState extends State<TodayAttendanceView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ScopeStatusBar(provider: provider, summary: summary),
+        _SyncStatusBar(provider: provider, summary: summary),
         const SizedBox(height: 12),
+        if (provider.refreshErrorMessage != null) ...[
+          AttendanceInlineBanner(
+            icon: Icons.cloud_off_rounded,
+            accent: AppColors.error,
+            background: AppColors.errorBg,
+            message:
+                'Lần cập nhật gần nhất thất bại: ${provider.refreshErrorMessage}. '
+                'Bảng đang hiển thị dữ liệu đọc lúc ${_formatTime(provider.lastUpdatedAt)}.',
+            trailing: TextButton(
+              onPressed: provider.refresh,
+              child: const Text('Thử lại'),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         _StatusNoticeBanner(summary: summary),
         AttendanceSummaryCards(summary: summary),
         const SizedBox(height: 16),
-        Expanded(child: AttendanceRosterTable(summary: summary)),
+        Expanded(child: _buildDataArea(summary)),
       ],
     );
   }
+
+  Widget _buildDataArea(AttendanceSummary summary) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 1180) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 3, child: AttendanceRosterTable(summary: summary)),
+              const SizedBox(width: 16),
+              SizedBox(width: 380, child: RetryEventsPanel(summary: summary)),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Expanded(child: AttendanceRosterTable(summary: summary)),
+            const SizedBox(height: 16),
+            SizedBox(height: 280, child: RetryEventsPanel(summary: summary)),
+          ],
+        );
+      },
+    );
+  }
+
+  static String _formatTime(DateTime? value) =>
+      value == null ? '—' : DateFormat('HH:mm:ss').format(value);
 }
 
 class _FilterBar extends StatelessWidget {
@@ -162,6 +206,7 @@ class _FilterBar extends StatelessWidget {
           SizedBox(width: 300, child: _buildClassSelector(context)),
           SizedBox(width: 190, child: _buildDateSelector(context)),
           SizedBox(width: 280, child: _buildSessionSelector(context)),
+          _buildAutoRefreshToggle(),
           FilledButton.icon(
             onPressed: provider.isRefreshing ? null : provider.refresh,
             icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -256,6 +301,21 @@ class _FilterBar extends StatelessWidget {
     );
   }
 
+  Widget _buildAutoRefreshToggle() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Switch(
+          value: provider.autoRefreshEnabled,
+          activeThumbColor: AppColors.primary,
+          onChanged: provider.setAutoRefresh,
+        ),
+        const SizedBox(width: 4),
+        const Text('Tự động cập nhật', style: AppTypography.bodySecondary),
+      ],
+    );
+  }
+
   InputDecoration _decoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
@@ -273,21 +333,23 @@ class _FilterBar extends StatelessWidget {
   }
 }
 
-class _ScopeStatusBar extends StatelessWidget {
+class _SyncStatusBar extends StatelessWidget {
   final AttendanceResultsProvider provider;
   final AttendanceSummary summary;
 
-  const _ScopeStatusBar({required this.provider, required this.summary});
+  const _SyncStatusBar({required this.provider, required this.summary});
 
   @override
   Widget build(BuildContext context) {
+    final session = provider.selectedSession;
+
     return Wrap(
       spacing: 12,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Text(summary.scope.label, style: AppTypography.heading3),
-        SessionStatusChip(status: summary.session.status),
+        if (session != null) SessionStatusChip(status: session.status),
         if (provider.isRefreshing)
           const Row(
             mainAxisSize: MainAxisSize.min,
@@ -301,16 +363,17 @@ class _ScopeStatusBar extends StatelessWidget {
                 ),
               ),
               SizedBox(width: 8),
-              Text('Đang đọc...', style: AppTypography.caption),
+              Text('Đang cập nhật...', style: AppTypography.caption),
             ],
           )
         else
           Text(
-            'Số liệu đọc lúc ${DateFormat('HH:mm:ss').format(summary.asOf)}',
+            'Số liệu đọc lúc '
+            '${DateFormat('HH:mm:ss').format(summary.asOf)}',
             style: AppTypography.caption,
           ),
         Text(
-          'Nguồn: ${summary.scope.sessionId}',
+          'Nguồn: ${summary.scope.sessionIds.join(', ')}',
           style: AppTypography.caption,
         ),
       ],

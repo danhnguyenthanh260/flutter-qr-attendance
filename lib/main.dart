@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'core/constants/app_colors.dart';
 import 'data/services/attendance_service.dart';
 import 'data/services/google_apps_script_attendance_service.dart';
+import 'providers/attendance_history_provider.dart';
 import 'providers/attendance_results_provider.dart';
 import 'providers/session_provider.dart';
 import 'views/shell/app_shell.dart';
@@ -24,6 +25,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => AttendanceResultsProvider(service: attendanceService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AttendanceHistoryProvider(service: attendanceService),
         ),
       ],
       child: const QrAttendanceApp(),

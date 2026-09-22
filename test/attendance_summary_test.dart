@@ -89,7 +89,7 @@ void main() {
     });
   });
 
-  group('Chống trùng khi đối chiếu roster', () {
+  group('Chống trùng và lượt nộp lại', () {
     test('hai bản ghi cùng email chỉ tính một người có mặt', () {
       final summary = AttendanceSummary.fromSessionResults(
         buildResults(
@@ -114,6 +114,88 @@ void main() {
 
       expect(summary.presentCount, 1);
       expect(summary.unlistedSubmissions, isEmpty);
+    });
+
+    test('lượt nộp lại không tăng số có mặt và tham chiếu được lượt gốc', () {
+      final acceptedAt = kBaseTime.add(const Duration(minutes: 2));
+      final summary = AttendanceSummary.fromSessionResults(
+        buildResults(
+          roster: roster,
+          attendance: [
+            buildAttendance(
+              'an@fpt.edu.vn',
+              id: 'ATT_GOC',
+              acceptedAt: acceptedAt,
+            ),
+          ],
+          attempts: [
+            buildAttempt('an@fpt.edu.vn', id: 'ATM_1'),
+            buildAttempt('an@fpt.edu.vn', id: 'ATM_2'),
+          ],
+        ),
+      );
+
+      expect(summary.presentCount, 1);
+      expect(summary.retryEventCount, 2);
+      expect(summary.retryStudentCount, 1);
+
+      final event = summary.retryEvents.first;
+      expect(event.originalAttendanceId, 'ATT_GOC');
+      expect(event.originalAcceptedAt, acceptedAt);
+      expect(event.isOnRoster, isTrue);
+      expect(event.sessionId, 'SES_1');
+
+      final row = summary.rows.firstWhere(
+        (item) => item.student.email == 'an@fpt.edu.vn',
+      );
+      expect(row.retryCount, 2);
+      expect(row.rejectedCount, 0);
+    });
+
+    test('lượt bị từ chối được tách khỏi lượt nộp lại', () {
+      final summary = AttendanceSummary.fromSessionResults(
+        buildResults(
+          roster: roster,
+          attempts: [
+            buildAttempt(
+              'binh@fpt.edu.vn',
+              id: 'ATM_EXP',
+              attemptType: 'grant_expired',
+              reason: 'grace_expired',
+            ),
+          ],
+        ),
+      );
+
+      final row = summary.rows.firstWhere(
+        (item) => item.student.email == 'binh@fpt.edu.vn',
+      );
+      expect(row.retryCount, 0);
+      expect(row.rejectedCount, 1);
+      expect(summary.retryEvents.single.hasOriginalSubmission, isFalse);
+    });
+
+    test('cảnh báo sắp xếp mới nhất trước', () {
+      final summary = AttendanceSummary.fromSessionResults(
+        buildResults(
+          roster: roster,
+          attempts: [
+            buildAttempt(
+              'an@fpt.edu.vn',
+              id: 'ATM_CU',
+              occurredAt: kBaseTime.add(const Duration(minutes: 3)),
+            ),
+            buildAttempt(
+              'binh@fpt.edu.vn',
+              id: 'ATM_MOI',
+              occurredAt: kBaseTime.add(const Duration(minutes: 9)),
+            ),
+          ],
+        ),
+      );
+
+      expect(summary.retryEvents.map((event) => event.id).toList(),
+          ['ATM_MOI', 'ATM_CU']);
     });
   });
 
@@ -160,17 +242,150 @@ void main() {
     });
   });
 
-  group('Phạm vi số liệu', () {
-    test('scope bám đúng lớp, buổi và phiên đang xem', () {
-      final summary = AttendanceSummary.fromSessionResults(
-        buildResults(roster: roster),
+  group('Buổi học có nhiều phiên', () {
+    final firstSession = buildSession(
+      id: 'SES_A',
+      status: SessionStatus.closed,
+      openedAt: kBaseTime,
+      closedAt: kBaseTime.add(const Duration(minutes: 40)),
+    );
+    final secondSession = buildSession(
+      id: 'SES_B',
+      status: SessionStatus.closed,
+      openedAt: kBaseTime.add(const Duration(minutes: 50)),
+      closedAt: kBaseTime.add(const Duration(minutes: 80)),
+    );
+
+    test('sinh viên có mặt ở một phiên không bị cộng trùng', () {
+      final summary = AttendanceSummary.fromMultipleSessions([
+        buildResults(
+          session: firstSession,
+          roster: roster,
+          attendance: [
+            buildAttendance('an@fpt.edu.vn', id: 'ATT_A', sessionId: 'SES_A'),
+          ],
+        ),
+        buildResults(
+          session: secondSession,
+          roster: roster,
+          attendance: [
+            buildAttendance('an@fpt.edu.vn', id: 'ATT_B', sessionId: 'SES_B'),
+            buildAttendance('binh@fpt.edu.vn', id: 'ATT_C', sessionId: 'SES_B'),
+          ],
+        ),
+      ]);
+
+      expect(summary.totalStudents, 3);
+      expect(summary.presentCount, 2);
+      expect(summary.absentCount, 1);
+      expect(summary.scope.sessionIds, ['SES_A', 'SES_B']);
+    });
+
+    test('còn một phiên chưa chốt thì cả buổi là tạm tính', () {
+      final summary = AttendanceSummary.fromMultipleSessions([
+        buildResults(
+          session: firstSession,
+          roster: roster,
+          attendance: [
+            buildAttendance('an@fpt.edu.vn', id: 'ATT_A', sessionId: 'SES_A'),
+          ],
+        ),
+        buildResults(
+          session: buildSession(id: 'SES_B', status: SessionStatus.active),
+          roster: roster,
+        ),
+      ]);
+
+      expect(summary.isFinalized, isFalse);
+      expect(summary.absentCount, 0);
+      expect(summary.notYetCount, 2);
+    });
+
+    test('phát hiện roster thay đổi giữa các phiên', () {
+      final summary = AttendanceSummary.fromMultipleSessions([
+        buildResults(session: firstSession, roster: roster),
+        buildResults(
+          session: secondSession,
+          roster: [...roster, buildRosterEntry('moi@fpt.edu.vn', name: 'Đỗ Gia Mới')],
+        ),
+      ]);
+
+      expect(summary.rosterChangedBetweenSessions, isTrue);
+      expect(summary.totalStudents, 4);
+    });
+
+    test('gộp cảnh báo từ mọi phiên của buổi', () {
+      final summary = AttendanceSummary.fromMultipleSessions([
+        buildResults(
+          session: firstSession,
+          roster: roster,
+          attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_A', sessionId: 'SES_A')],
+        ),
+        buildResults(
+          session: secondSession,
+          roster: roster,
+          attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_B', sessionId: 'SES_B')],
+        ),
+      ]);
+
+      expect(summary.retryEventCount, 2);
+      expect(summary.retryStudentCount, 1);
+    });
+  });
+
+  group('Hợp nhất snapshot khi đọc lại', () {
+    test('union theo id không nhân đôi cảnh báo', () {
+      final first = buildResults(
+        roster: roster,
+        attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
+        attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_1')],
+      );
+      final second = buildResults(
+        roster: roster,
+        attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
+        attempts: [
+          buildAttempt('an@fpt.edu.vn', id: 'ATM_1'),
+          buildAttempt('binh@fpt.edu.vn', id: 'ATM_2'),
+        ],
       );
 
-      expect(summary.scope.classId, kClassId);
-      expect(summary.scope.sessionId, 'SES_1');
-      expect(summary.scope.slotNumber, 2);
-      expect(summary.scope.date, '2026-09-22');
-      expect(summary.asOf, kBaseTime.add(const Duration(minutes: 10)));
+      final merged = first.mergeWith(second);
+
+      expect(merged.attendance.length, 1);
+      expect(merged.attempts.length, 2);
+    });
+
+    test('đọc lại thiếu dữ liệu không làm mất sự kiện đã có', () {
+      final first = buildResults(
+        roster: roster,
+        attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
+        attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_1')],
+      );
+      final partial = buildResults(roster: roster);
+
+      final merged = first.mergeWith(partial);
+
+      expect(merged.attendance.length, 1);
+      expect(merged.attempts.length, 1);
+    });
+
+    test('snapshot của phiên khác thay thế hoàn toàn', () {
+      final first = buildResults(
+        roster: roster,
+        attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
+      );
+      final other = buildResults(
+        session: buildSession(id: 'SES_KHAC'),
+        roster: roster,
+        attendance: [
+          buildAttendance('binh@fpt.edu.vn', id: 'ATT_9', sessionId: 'SES_KHAC'),
+        ],
+      );
+
+      final merged = first.mergeWith(other);
+
+      expect(merged.session.id, 'SES_KHAC');
+      expect(merged.attendance.single.id, 'ATT_9');
     });
   });
 }

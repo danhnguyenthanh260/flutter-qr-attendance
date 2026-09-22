@@ -152,6 +152,9 @@ class AttendanceAttempt {
     this.occurredAt,
   });
 
+  bool get isRetryOfAcceptedSubmission =>
+      attemptType == 'duplicate_email' || attemptType == 'grant_replayed';
+
   factory AttendanceAttempt.fromJson(Map<String, dynamic> json) {
     final email = _blankToNull(json['email']) ?? '';
     return AttendanceAttempt(
@@ -236,4 +239,33 @@ class SessionResults {
         'attendance': attendance.map((item) => item.toJson()).toList(),
         'attempts': attempts.map((item) => item.toJson()).toList(),
       };
+
+  SessionResults mergeWith(SessionResults newer) {
+    if (newer.session.id != session.id) {
+      return newer;
+    }
+
+    return SessionResults(
+      session: newer.session,
+      roster: newer.roster,
+      attendance: _unionById(attendance, newer.attendance, (item) => item.id),
+      attempts: _unionById(attempts, newer.attempts, (item) => item.id),
+      fetchedAt: newer.fetchedAt,
+    );
+  }
+
+  static List<T> _unionById<T>(
+    List<T> previous,
+    List<T> next,
+    String Function(T) idOf,
+  ) {
+    final merged = <String, T>{};
+    for (final item in previous) {
+      merged[idOf(item)] = item;
+    }
+    for (final item in next) {
+      merged[idOf(item)] = item;
+    }
+    return List<T>.unmodifiable(merged.values);
+  }
 }

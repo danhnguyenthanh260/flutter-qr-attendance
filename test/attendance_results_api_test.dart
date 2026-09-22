@@ -138,7 +138,7 @@ void main() {
     expect(results.roster.last.displayName, 'binh');
     expect(results.attendance.single.acceptedAt,
         DateTime.parse('2026-09-22T09:19:00.000'));
-    expect(results.attempts.single.attemptType, 'duplicate_email');
+    expect(results.attempts.single.isRetryOfAcceptedSubmission, isTrue);
     expect(results.fetchedAt, DateTime.utc(2026, 9, 22, 8));
   });
 

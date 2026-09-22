@@ -27,6 +27,7 @@ void main() {
     final provider = AttendanceResultsProvider(
       service: service,
       clock: () => kBaseTime,
+      autoRefresh: false,
     );
     addTearDown(provider.dispose);
 
@@ -58,6 +59,7 @@ void main() {
     expect(find.text('Vắng'), findsNothing);
     expect(find.textContaining('tạm tính'), findsWidgets);
     expect(find.text('Nguyễn Văn An'), findsWidgets);
+    expect(find.text('Nhật ký lượt nộp lại'), findsOneWidget);
   });
 
   testWidgets('phiên đã chốt hiển thị vắng và trạng thái đã chốt',
