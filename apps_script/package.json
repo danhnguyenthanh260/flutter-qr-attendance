@@ -2,7 +2,7 @@
   "name": "flutter-qr-attendance-apps-script",
   "private": true,
   "scripts": {
-    "check": "node --check src/attendance_domain.js && node --check src/legacy_sheet_migration.js && node --check src/sheets_gateway.js && node --check src/attendance_repository.js && node --check src/attendance_service.js && node --check src/attendance_config.js && node --check src/attendance_form.js && node --check src/student_attendance_service.js && node --check src/teacher_api.js",
+    "check": "node --check src/00_attendance_domain.js && node --check src/04_legacy_sheet_migration.js && node --check src/01_sheets_gateway.js && node --check src/02_attendance_repository.js && node --check src/03_attendance_service.js && node --check src/05_attendance_config.js && node --check src/06_attendance_form.js && node --check src/07_student_attendance_service.js && node --check src/08_teacher_api.js",
     "test": "node --test test/attendance_data.test.js"
   }
 }

@@ -66,9 +66,9 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
     migrateConfiguredLegacySpreadsheet: migrateConfiguredLegacySpreadsheet,
   };
 })(
-  typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain,
-  typeof module !== 'undefined' && module.exports ? require('./sheets_gateway.js') : GoogleSheetsGateway,
-  typeof module !== 'undefined' && module.exports ? require('./attendance_service.js') : AttendanceDataService
+  typeof module !== 'undefined' && module.exports ? require('./00_attendance_domain.js') : AttendanceDomain,
+  typeof module !== 'undefined' && module.exports ? require('./01_sheets_gateway.js') : GoogleSheetsGateway,
+  typeof module !== 'undefined' && module.exports ? require('./03_attendance_service.js') : AttendanceDataService
 );
 
 if (typeof module !== 'undefined' && module.exports) {

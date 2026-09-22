@@ -2,13 +2,13 @@ if (typeof require === 'function') {
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const Domain = require('../src/attendance_domain.js');
-const Repository = require('../src/attendance_repository.js');
-const DataService = require('../src/attendance_service.js');
-const TeacherApiContract = require('../src/teacher_api.js');
-const StudentAttendanceService = require('../src/student_attendance_service.js');
-const LegacyMigration = require('../src/legacy_sheet_migration.js');
-const AttendanceFormGateway = require('../src/attendance_form.js');
+const Domain = require('../src/00_attendance_domain.js');
+const Repository = require('../src/02_attendance_repository.js');
+const DataService = require('../src/03_attendance_service.js');
+const TeacherApiContract = require('../src/08_teacher_api.js');
+const StudentAttendanceService = require('../src/07_student_attendance_service.js');
+const LegacyMigration = require('../src/04_legacy_sheet_migration.js');
+const AttendanceFormGateway = require('../src/06_attendance_form.js');
 
 class MemorySheetGateway {
   constructor() {
