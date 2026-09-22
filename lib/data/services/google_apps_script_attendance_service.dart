@@ -26,9 +26,9 @@ class TeacherApiException extends AttendanceApiException {
 /// mock or to the legacy endpoint, both of which would display unusable QR data.
 class ConfigurationRequiredAttendanceService implements AttendanceService {
   Never _fail() => throw const TeacherApiException(
-        code: 'configuration_required',
-        message: 'Cần cấu hình ATTENDANCE_TEACHER_API_URL, ATTENDANCE_TEACHER_API_KEY và ATTENDANCE_TEACHER_ID trước khi mở phiên điểm danh.',
-      );
+    code: 'configuration_required',
+    message: 'Cần cấu hình ATTENDANCE_TEACHER_API_URL, ATTENDANCE_TEACHER_API_KEY và ATTENDANCE_TEACHER_ID trước khi mở phiên điểm danh.',
+  );
 
   @override
   Future<AttendanceSession> closeSession(String sessionId) async => _fail();
@@ -94,13 +94,17 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     required String teacherId,
     http.Client? client,
     DateTime Function()? clock,
-  })  : _endpoint = endpoint,
-        _teacherKey = _requireValue(teacherKey, 'teacherKey'),
-        _teacherId = _requireValue(teacherId, 'teacherId'),
-        _client = client ?? http.Client(),
-        _clock = clock ?? DateTime.now {
+  }) : _endpoint = endpoint,
+       _teacherKey = _requireValue(teacherKey, 'teacherKey'),
+       _teacherId = _requireValue(teacherId, 'teacherId'),
+       _client = client ?? http.Client(),
+       _clock = clock ?? DateTime.now {
     if (!_endpoint.hasScheme || !_endpoint.hasAuthority) {
-      throw ArgumentError.value(endpoint, 'endpoint', 'A complete API URL is required.');
+      throw ArgumentError.value(
+        endpoint,
+        'endpoint',
+        'A complete API URL is required.',
+      );
     }
   }
 
@@ -224,7 +228,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     final initialResponse = await http.Response.fromStream(
       await _client.send(request),
     );
-    return _followAppsScriptPostRedirect(initialResponse);
+    return _followAppsScriptRedirect(initialResponse);
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
@@ -240,14 +244,14 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     final initialResponse = await http.Response.fromStream(
       await _client.send(request),
     );
-    final response = await _followAppsScriptPostRedirect(initialResponse);
+    final response = await _followAppsScriptRedirect(initialResponse);
     return _decodeEnvelope(response, action);
   }
 
   /// Apps Script's ContentService returns a 302 to a short-lived
   /// script.googleusercontent.com URL. Follow only that trusted target with a
   /// GET to obtain the JSON envelope.
-  Future<http.Response> _followAppsScriptPostRedirect(
+  Future<http.Response> _followAppsScriptRedirect(
     http.Response response,
   ) async {
     final location = response.headers['location'];
@@ -265,16 +269,63 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     return _getAppsScriptContent(redirectUri);
   }
 
-  /// Google occasionally serves a short-lived HTML/interstitial response at a
-  /// newly issued ContentService URL before its JSON body is available. Retry
-  /// the same trusted URL rather than replaying the original teacher action.
+  /// Google occasionally serves another ContentService redirect, or a
+  /// short-lived HTML response, before the JSON body is available. Every hop
+  /// is made with automatic redirects disabled so the Windows HTTP client
+  /// cannot enter an opaque redirect loop. The original teacher action is
+  /// never replayed.
   Future<http.Response> _getAppsScriptContent(Uri redirectUri) async {
-    var response = await _client.get(redirectUri);
-    for (var attempt = 0; attempt < 2 && !_hasJsonBody(response); attempt++) {
-      await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
-      response = await _client.get(redirectUri);
+    var uri = redirectUri;
+    final visitedUris = <String>{};
+
+    for (var hop = 0; hop < 3; hop++) {
+      if (!visitedUris.add(uri.toString())) {
+        throw const TeacherApiException(
+          code: 'invalid_response',
+          message: 'Teacher API redirected repeatedly without returning data.',
+        );
+      }
+
+      var response = await _getWithoutRedirect(uri);
+      final nextUri = _trustedContentRedirect(response);
+      if (nextUri != null) {
+        uri = nextUri;
+        continue;
+      }
+
+      for (var attempt = 0; attempt < 2 && !_hasJsonBody(response); attempt++) {
+        await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
+        response = await _getWithoutRedirect(uri);
+      }
+      return response;
     }
-    return response;
+
+    throw const TeacherApiException(
+      code: 'invalid_response',
+      message: 'Teacher API redirected too many times without returning data.',
+    );
+  }
+
+  Future<http.Response> _getWithoutRedirect(Uri uri) async {
+    final request = http.Request('GET', uri)
+      ..followRedirects = false
+      ..maxRedirects = 0;
+    return http.Response.fromStream(await _client.send(request));
+  }
+
+  Uri? _trustedContentRedirect(http.Response response) {
+    if (response.statusCode != 302) {
+      return null;
+    }
+
+    final location = response.headers['location'];
+    final uri = location == null ? null : Uri.tryParse(location);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'script.googleusercontent.com') {
+      return null;
+    }
+    return uri;
   }
 
   bool _hasJsonBody(http.Response response) {
@@ -295,16 +346,23 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     if (decoded is! Map) {
       throw TeacherApiException(
         code: 'invalid_response',
-        message: 'Teacher API returned an invalid response envelope for $action.',
+        message:
+            'Teacher API returned an invalid response envelope for $action.',
       );
     }
     final envelope = Map<String, dynamic>.from(decoded);
     final error = envelope['error'];
-    if (response.statusCode < 200 || response.statusCode >= 300 || envelope['ok'] != true) {
-      final errorMap = error is Map ? Map<String, dynamic>.from(error) : const <String, dynamic>{};
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        envelope['ok'] != true) {
+      final errorMap = error is Map
+          ? Map<String, dynamic>.from(error)
+          : const <String, dynamic>{};
       throw TeacherApiException(
         code: errorMap['code'] as String? ?? 'request_failed',
-        message: errorMap['message'] as String? ?? 'Teacher API request failed for $action.',
+        message:
+            errorMap['message'] as String? ??
+            'Teacher API request failed for $action.',
         details: errorMap['details'] is Map
             ? Map<String, dynamic>.from(errorMap['details'] as Map)
             : null,
