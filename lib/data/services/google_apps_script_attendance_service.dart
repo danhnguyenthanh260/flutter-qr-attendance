@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/config/app_config.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
@@ -20,6 +21,48 @@ class TeacherApiException implements Exception {
 
   @override
   String toString() => 'TeacherApiException($code): $message';
+}
+
+/// Returned only when a release was built without the required teacher API
+/// configuration. It prevents the desktop app from silently falling back to a
+/// mock or to the legacy endpoint, both of which would display unusable QR data.
+class ConfigurationRequiredAttendanceService implements AttendanceService {
+  Never _fail() => throw const TeacherApiException(
+        code: 'configuration_required',
+        message: 'Cần cấu hình ATTENDANCE_TEACHER_API_URL, ATTENDANCE_TEACHER_API_KEY và ATTENDANCE_TEACHER_ID trước khi mở phiên điểm danh.',
+      );
+
+  @override
+  Future<AttendanceSession> closeSession(String sessionId) async => _fail();
+
+  @override
+  Future<AttendanceSession?> getActiveSession() async => _fail();
+
+  @override
+  Future<List<ClassModel>> getClasses() async => _fail();
+
+  @override
+  Future<QrTicketModel> getNextQrTicket(String sessionId) async => _fail();
+
+  @override
+  Future<List<SessionSlot>> getSlotsForClass(String classId) async => _fail();
+
+  @override
+  Future<AttendanceSession> startSession({
+    required String classId,
+    required SessionSlot slot,
+  }) async => _fail();
+}
+
+AttendanceService createConfiguredTeacherAttendanceService() {
+  if (!AppConfig.hasTeacherApiConfiguration) {
+    return ConfigurationRequiredAttendanceService();
+  }
+  return GoogleAppsScriptAttendanceService(
+    endpoint: Uri.parse(AppConfig.teacherApiUrl),
+    teacherKey: AppConfig.teacherApiKey,
+    teacherId: AppConfig.teacherId,
+  );
 }
 
 /// An opt-in client for the Google Apps Script teacher API from issues #4 and #9.

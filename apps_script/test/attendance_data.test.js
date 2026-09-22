@@ -335,3 +335,25 @@ test('teacher API requires the configured key and returns typed data envelopes',
   assert.equal(result.data.length, 2);
   assert.equal(result.data[0].roster_status, 'available');
 });
+
+test('teacher API issues a server-side QR claim URL only with teacher authentication', () => {
+  const { service } = createFixture();
+  const session = service.startSession(startInput());
+  const result = TeacherApiContract.execute('POST', {
+    action: 'issue_qr',
+    teacher_key: 'teacher-key',
+    session_id: session.id,
+  }, {
+    config: { teacherApiKey: 'teacher-key' },
+    studentConfig: {
+      webAppUrl: 'https://script.example/exec',
+      qrValidSeconds: 30,
+      graceSeconds: 120,
+    },
+    service,
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.data.form_url, /route=claim/);
+  assert.equal(result.data.valid_seconds, 30);
+});
