@@ -373,7 +373,7 @@ class _SyncStatusBar extends StatelessWidget {
             style: AppTypography.caption,
           ),
         Text(
-          'Nguồn: ${summary.scope.sessionId}',
+          'Nguồn: ${summary.scope.sessionIds.join(', ')}',
           style: AppTypography.caption,
         ),
       ],

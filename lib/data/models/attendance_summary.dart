@@ -7,6 +7,7 @@ class StudentAttendanceRow {
   final RosterEntry student;
   final StudentAttendanceStatus status;
   final DateTime? acceptedAt;
+  final String? acceptedSessionId;
   final int retryCount;
   final int rejectedCount;
 
@@ -14,6 +15,7 @@ class StudentAttendanceRow {
     required this.student,
     required this.status,
     this.acceptedAt,
+    this.acceptedSessionId,
     this.retryCount = 0,
     this.rejectedCount = 0,
   });
@@ -58,7 +60,7 @@ class AttendanceScope {
   final String date;
   final int slotNumber;
   final String timeRange;
-  final String sessionId;
+  final List<String> sessionIds;
 
   const AttendanceScope({
     required this.classId,
@@ -66,7 +68,7 @@ class AttendanceScope {
     required this.date,
     required this.slotNumber,
     required this.timeRange,
-    required this.sessionId,
+    required this.sessionIds,
   });
 
   String get label => '$className · Slot $slotNumber · $date';
@@ -74,24 +76,29 @@ class AttendanceScope {
 
 class AttendanceSummary {
   final AttendanceScope scope;
-  final AttendanceSession session;
+  final List<AttendanceSession> sessions;
   final List<StudentAttendanceRow> rows;
   final List<RetryEvent> retryEvents;
   final List<UnlistedSubmission> unlistedSubmissions;
+  final bool rosterChangedBetweenSessions;
   final DateTime asOf;
 
   const AttendanceSummary({
     required this.scope,
-    required this.session,
+    required this.sessions,
     required this.rows,
     required this.retryEvents,
     required this.unlistedSubmissions,
+    required this.rosterChangedBetweenSessions,
     required this.asOf,
   });
 
-  bool get isFinalized => session.status == SessionStatus.closed;
+  bool get isFinalized =>
+      sessions.isNotEmpty &&
+      sessions.every((session) => session.status == SessionStatus.closed);
 
-  bool get isSettling => session.status == SessionStatus.closing;
+  bool get isSettling =>
+      sessions.any((session) => session.status == SessionStatus.closing);
 
   bool get isProvisional => !isFinalized;
 
@@ -122,22 +129,43 @@ class AttendanceSummary {
     SessionResults results, {
     DateTime? asOf,
   }) {
-    final session = results.session;
-    final rosterByKey = {
-      for (final entry in results.roster) entry.emailKey: entry,
-    };
-    final acceptedByKey = _earliestAcceptedByEmail(results.attendance);
-    final finalized = session.status == SessionStatus.closed;
+    return AttendanceSummary.fromMultipleSessions([results], asOf: asOf);
+  }
+
+  factory AttendanceSummary.fromMultipleSessions(
+    List<SessionResults> snapshots, {
+    DateTime? asOf,
+  }) {
+    if (snapshots.isEmpty) {
+      throw ArgumentError.value(
+        snapshots,
+        'snapshots',
+        'At least one session snapshot is required to build a summary.',
+      );
+    }
+
+    final ordered = [...snapshots]
+      ..sort((a, b) => a.session.openedAt.compareTo(b.session.openedAt));
+    final sessions = ordered.map((snapshot) => snapshot.session).toList();
+    final reference = ordered.first.session;
+
+    final roster = _mergeRosters(ordered);
+    final rosterByKey = {for (final entry in roster) entry.emailKey: entry};
+    final acceptedByKey = _earliestAcceptedByEmail(ordered);
+    final attempts = _allAttempts(ordered);
+
+    final finalized =
+        sessions.every((session) => session.status == SessionStatus.closed);
 
     final retryCounts = <String, int>{};
     final rejectedCounts = <String, int>{};
-    for (final attempt in results.attempts) {
+    for (final attempt in attempts) {
       final counter =
           attempt.isRetryOfAcceptedSubmission ? retryCounts : rejectedCounts;
       counter[attempt.emailKey] = (counter[attempt.emailKey] ?? 0) + 1;
     }
 
-    final rows = results.roster.map((student) {
+    final rows = roster.map((student) {
       final accepted = acceptedByKey[student.emailKey];
       final status = accepted != null
           ? StudentAttendanceStatus.present
@@ -149,13 +177,14 @@ class AttendanceSummary {
         student: student,
         status: status,
         acceptedAt: accepted?.acceptedAt,
+        acceptedSessionId: accepted?.sessionId,
         retryCount: retryCounts[student.emailKey] ?? 0,
         rejectedCount: rejectedCounts[student.emailKey] ?? 0,
       );
     }).toList()
       ..sort(_compareRows);
 
-    final retryEvents = results.attempts.map((attempt) {
+    final retryEvents = attempts.map((attempt) {
       final student = rosterByKey[attempt.emailKey];
       final accepted = acceptedByKey[attempt.emailKey];
       return RetryEvent(
@@ -178,30 +207,57 @@ class AttendanceSummary {
 
     return AttendanceSummary(
       scope: AttendanceScope(
-        classId: session.classId,
-        className: session.className,
-        date: session.slot.date,
-        slotNumber: session.slot.slotNumber,
-        timeRange: session.slot.timeRange,
-        sessionId: session.id,
+        classId: reference.classId,
+        className: reference.className,
+        date: reference.slot.date,
+        slotNumber: reference.slot.slotNumber,
+        timeRange: reference.slot.timeRange,
+        sessionIds: sessions.map((session) => session.id).toList(growable: false),
       ),
-      session: session,
+      sessions: List.unmodifiable(sessions),
       rows: List.unmodifiable(rows),
       retryEvents: List.unmodifiable(retryEvents),
       unlistedSubmissions: List.unmodifiable(unlisted),
-      asOf: asOf ?? results.fetchedAt,
+      rosterChangedBetweenSessions: _rosterChanged(ordered),
+      asOf: asOf ?? ordered.map((snapshot) => snapshot.fetchedAt).reduce(_latest),
     );
   }
 
+  static DateTime _latest(DateTime a, DateTime b) => a.isAfter(b) ? a : b;
+
+  static List<RosterEntry> _mergeRosters(List<SessionResults> ordered) {
+    final merged = <String, RosterEntry>{};
+    for (final snapshot in ordered) {
+      for (final entry in snapshot.roster) {
+        merged[entry.emailKey] = entry;
+      }
+    }
+    return merged.values.toList(growable: false);
+  }
+
+  static bool _rosterChanged(List<SessionResults> ordered) {
+    if (ordered.length < 2) return false;
+    final first = ordered.first.roster.map((entry) => entry.emailKey).toSet();
+    return ordered.any(
+      (snapshot) =>
+          !_setEquals(snapshot.roster.map((entry) => entry.emailKey).toSet(), first),
+    );
+  }
+
+  static bool _setEquals(Set<String> a, Set<String> b) =>
+      a.length == b.length && a.containsAll(b);
+
   static Map<String, AttendanceRecord> _earliestAcceptedByEmail(
-    List<AttendanceRecord> records,
+    List<SessionResults> ordered,
   ) {
     final accepted = <String, AttendanceRecord>{};
-    for (final record in records) {
-      if (record.emailKey.isEmpty) continue;
-      final current = accepted[record.emailKey];
-      if (current == null || _isEarlier(record, current)) {
-        accepted[record.emailKey] = record;
+    for (final snapshot in ordered) {
+      for (final record in snapshot.attendance) {
+        if (record.emailKey.isEmpty) continue;
+        final current = accepted[record.emailKey];
+        if (current == null || _isEarlier(record, current)) {
+          accepted[record.emailKey] = record;
+        }
       }
     }
     return accepted;
@@ -213,6 +269,16 @@ class AttendanceSummary {
     if (candidateAt == null) return false;
     if (currentAt == null) return true;
     return candidateAt.isBefore(currentAt);
+  }
+
+  static List<AttendanceAttempt> _allAttempts(List<SessionResults> ordered) {
+    final attempts = <String, AttendanceAttempt>{};
+    for (final snapshot in ordered) {
+      for (final attempt in snapshot.attempts) {
+        attempts[attempt.id] = attempt;
+      }
+    }
+    return attempts.values.toList(growable: false);
   }
 
   static int _compareRows(StudentAttendanceRow a, StudentAttendanceRow b) {

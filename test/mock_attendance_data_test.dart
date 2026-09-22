@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_qr_attendance/data/models/attendance_summary.dart';
+import 'package:flutter_qr_attendance/data/models/session_day_group.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
@@ -14,12 +15,14 @@ void main() {
     service = MockAttendanceService(simulateDelay: false, clock: () => now);
   });
 
-  test('lịch sử được seed đủ các buổi đã chốt', () async {
+  test('lịch sử được seed đủ buổi và có buổi nhiều phiên', () async {
     final classes = await service.getClasses();
     final sessions = await service.listSessions(classId: classes.first.id);
+    final groups = SessionDayGroup.fromSessions(sessions);
 
     expect(sessions, isNotEmpty);
     expect(sessions.every((item) => item.status == SessionStatus.closed), isTrue);
+    expect(groups.where((group) => group.sessionCount > 1), hasLength(1));
   });
 
   test('roster mock khớp sĩ số lớp và email là duy nhất', () async {

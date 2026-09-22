@@ -211,7 +211,7 @@ void main() {
 
     expect(provider.selectedSession!.id, 'SES_A');
     expect(provider.summary!.presentCount, 2);
-    expect(provider.summary!.scope.sessionId, "SES_A");
+    expect(provider.summary!.scope.sessionIds, ['SES_A']);
   });
 
   test('phiên đã chốt thì dừng tự động cập nhật', () async {
