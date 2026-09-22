@@ -1,3 +1,4 @@
+if (typeof require === 'function') {
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
@@ -382,3 +383,4 @@ test('teacher API issues a server-side QR claim URL only with teacher authentica
   assert.match(result.data.form_url, /route=claim/);
   assert.equal(result.data.valid_seconds, 30);
 });
+}
