@@ -10,6 +10,21 @@ class AppConfig {
   static const String googleSheetsApiUrl =
       'https://script.google.com/macros/s/AKfycbyk6yBoDmp3DpFXNjyHuTOeno7eFF6odQNMIQ1-FruSME9ZlUOcGSNoCplElJ_-Poz-xQ/exec';
 
+  /// Runtime values for the new authenticated teacher API. They intentionally
+  /// have no source-controlled defaults: deployment must supply them with
+  /// `--dart-define` after the Apps Script Web App is configured.
+  static const String teacherApiUrl =
+      String.fromEnvironment('ATTENDANCE_TEACHER_API_URL');
+  static const String teacherApiKey =
+      String.fromEnvironment('ATTENDANCE_TEACHER_API_KEY');
+  static const String teacherId =
+      String.fromEnvironment('ATTENDANCE_TEACHER_ID');
+
+  static bool get hasTeacherApiConfiguration =>
+      teacherApiUrl.isNotEmpty &&
+      teacherApiKey.isNotEmpty &&
+      teacherId.isNotEmpty;
+
   // Prevent accidental construction of this class because it only stores constants.
   const AppConfig._();
 }

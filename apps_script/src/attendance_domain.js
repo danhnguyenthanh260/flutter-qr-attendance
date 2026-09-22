@@ -10,6 +10,7 @@ var AttendanceDomain = (function () {
     attendance: 'Attendance',
     attempts: 'Attempts',
     ticketStates: 'TicketStates',
+    grants: 'Grants',
   };
 
   var HEADERS = {};
@@ -60,7 +61,7 @@ var AttendanceDomain = (function () {
   HEADERS[SHEETS.formResponses] = [
     'form_response_id',
     'session_id',
-    'ticket_id',
+    'grant_id',
     'submitted_at',
     'received_at',
     'email',
@@ -97,6 +98,18 @@ var AttendanceDomain = (function () {
     'issued_at',
     'expires_at',
     'status',
+    'updated_at',
+  ];
+  HEADERS[SHEETS.grants] = [
+    'grant_id',
+    'ticket_id',
+    'session_id',
+    'issued_at',
+    'expires_at',
+    'status',
+    'form_response_id',
+    'email',
+    'email_key',
     'updated_at',
   ];
 

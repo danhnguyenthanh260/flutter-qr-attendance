@@ -5,6 +5,7 @@ const Domain = require('../src/attendance_domain.js');
 const Repository = require('../src/attendance_repository.js');
 const DataService = require('../src/attendance_service.js');
 const TeacherApiContract = require('../src/teacher_api.js');
+const StudentAttendanceService = require('../src/student_attendance_service.js');
 
 class MemorySheetGateway {
   constructor() {
@@ -59,7 +60,7 @@ class MemorySheetGateway {
 
 function createFixture() {
   const gateway = new MemorySheetGateway();
-  const now = new Date('2026-09-19T08:00:00.000Z');
+  let now = new Date('2026-09-19T08:00:00.000Z');
   let id = 0;
   const options = {
     clock: () => now,
@@ -111,6 +112,7 @@ function createFixture() {
     gateway,
     repository: new Repository(gateway, options),
     service: DataService.create(gateway, options),
+    setNow: (value) => { now = new Date(value); },
   };
 }
 
@@ -147,7 +149,7 @@ test('separates raw form responses from accepted attendance and keeps retries id
   const raw = service.recordRawFormResponse({
     form_response_id: 'FORM_1',
     session_id: session.id,
-    ticket_id: 'TICKET_1',
+    grant_id: 'GRANT_1',
     submitted_at: '2026-09-19T08:00:10.000Z',
     email: ' Student@Example.edu ',
     raw_payload: { field_email: 'Student@Example.edu' },
@@ -186,6 +188,89 @@ test('separates raw form responses from accepted attendance and keeps retries id
   assert.equal(gateway.rows(Domain.SHEETS.attendance).length, 1);
   assert.equal(gateway.rows(Domain.SHEETS.formResponses)[0].email_key, 'student@example.edu');
   assert.ok(gateway.lockCalls >= 5);
+});
+
+test('issues a 30-second QR ticket, grants grace after claim, and produces a prefilled Form URL', () => {
+  const { gateway, service } = createFixture();
+  const session = service.startSession(startInput());
+  const config = {
+    webAppUrl: 'https://script.google.com/macros/s/example/exec',
+    qrValidSeconds: 30,
+    graceSeconds: 120,
+  };
+  const ticket = StudentAttendanceService.issueQrTicket(service, config, session.id);
+  const claim = StudentAttendanceService.claimQrTicket(service, {
+    createPrefilledUrl: (_config, grantId) => `https://forms.example/form?grant=${grantId}`,
+  }, config, ticket.ticket_code);
+
+  assert.equal(ticket.generation, 1);
+  assert.match(ticket.form_url, /route=claim/);
+  assert.equal(gateway.rows(Domain.SHEETS.ticketStates).length, 1);
+  assert.equal(gateway.rows(Domain.SHEETS.grants).length, 1);
+  assert.match(claim.form_url, new RegExp(claim.grant_id));
+});
+
+test('accepts a claimed grant once, records duplicate email attempts, and rejects grant replay', () => {
+  const { gateway, service } = createFixture();
+  const session = service.startSession(startInput());
+  const config = { webAppUrl: 'https://script.example/exec', qrValidSeconds: 30, graceSeconds: 120 };
+  const ticket = StudentAttendanceService.issueQrTicket(service, config, session.id);
+  const formGateway = { createPrefilledUrl: (_config, grantId) => `https://forms.example/?grant=${grantId}` };
+  const firstGrant = StudentAttendanceService.claimQrTicket(service, formGateway, config, ticket.ticket_code);
+  const accepted = StudentAttendanceService.processFormSubmission(service, {
+    form_response_id: 'FORM_1',
+    submitted_at: '2026-09-19T08:00:40.000Z',
+    email: 'student@example.edu',
+    grant_id: firstGrant.grant_id,
+    raw_payload: { email: 'student@example.edu' },
+  });
+  const repeatedGrant = StudentAttendanceService.processFormSubmission(service, {
+    form_response_id: 'FORM_2',
+    submitted_at: '2026-09-19T08:00:41.000Z',
+    email: 'other@example.edu',
+    grant_id: firstGrant.grant_id,
+    raw_payload: { email: 'other@example.edu' },
+  });
+  const secondGrant = StudentAttendanceService.claimQrTicket(service, formGateway, config, ticket.ticket_code);
+  const duplicateEmail = StudentAttendanceService.processFormSubmission(service, {
+    form_response_id: 'FORM_3',
+    submitted_at: '2026-09-19T08:00:42.000Z',
+    email: 'student@example.edu',
+    grant_id: secondGrant.grant_id,
+    raw_payload: { email: 'student@example.edu' },
+  });
+
+  assert.equal(accepted.accepted, true);
+  assert.equal(repeatedGrant.outcome, 'grant_already_used');
+  assert.equal(duplicateEmail.outcome, 'duplicate');
+  assert.equal(gateway.rows(Domain.SHEETS.attendance).length, 1);
+  assert.equal(gateway.rows(Domain.SHEETS.attempts).length, 2);
+});
+
+test('rejects an expired QR ticket and a submitted grant after grace expires', () => {
+  const { service, setNow } = createFixture();
+  const session = service.startSession(startInput());
+  const config = { webAppUrl: 'https://script.example/exec', qrValidSeconds: 30, graceSeconds: 120 };
+  const ticket = StudentAttendanceService.issueQrTicket(service, config, session.id);
+  setNow('2026-09-19T08:00:31.000Z');
+  assert.throws(
+    () => StudentAttendanceService.claimQrTicket(service, { createPrefilledUrl: () => '' }, config, ticket.ticket_code),
+    (error) => error.code === 'ticket_expired',
+  );
+
+  const { service: graceService, setNow: setGraceNow } = createFixture();
+  const graceSession = graceService.startSession(startInput());
+  const graceTicket = StudentAttendanceService.issueQrTicket(graceService, config, graceSession.id);
+  const grant = StudentAttendanceService.claimQrTicket(graceService, { createPrefilledUrl: () => 'https://forms.example/' }, config, graceTicket.ticket_code);
+  setGraceNow('2026-09-19T08:02:01.000Z');
+  const expired = StudentAttendanceService.processFormSubmission(graceService, {
+    form_response_id: 'FORM_LATE',
+    submitted_at: '2026-09-19T08:02:01.000Z',
+    email: 'student@example.edu',
+    grant_id: grant.grant_id,
+    raw_payload: {},
+  });
+  assert.equal(expired.outcome, 'grace_expired');
 });
 
 test('does not present a missing roster as a successful empty roster', () => {
@@ -249,4 +334,26 @@ test('teacher API requires the configured key and returns typed data envelopes',
   assert.equal(result.ok, true);
   assert.equal(result.data.length, 2);
   assert.equal(result.data[0].roster_status, 'available');
+});
+
+test('teacher API issues a server-side QR claim URL only with teacher authentication', () => {
+  const { service } = createFixture();
+  const session = service.startSession(startInput());
+  const result = TeacherApiContract.execute('POST', {
+    action: 'issue_qr',
+    teacher_key: 'teacher-key',
+    session_id: session.id,
+  }, {
+    config: { teacherApiKey: 'teacher-key' },
+    studentConfig: {
+      webAppUrl: 'https://script.example/exec',
+      qrValidSeconds: 30,
+      graceSeconds: 120,
+    },
+    service,
+  });
+
+  assert.equal(result.ok, true);
+  assert.match(result.data.form_url, /route=claim/);
+  assert.equal(result.data.valid_seconds, 30);
 });

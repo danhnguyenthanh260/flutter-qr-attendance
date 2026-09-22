@@ -19,6 +19,24 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
     };
   }
 
+  function getStudentFlowConfig() {
+    var properties = PropertiesService.getScriptProperties();
+    var graceSeconds = Number(requireScriptProperty_(properties, 'ATTENDANCE_GRACE_SECONDS'));
+    if (!Number.isInteger(graceSeconds) || graceSeconds <= 0) {
+      Domain.fail('configuration_missing', 'ATTENDANCE_GRACE_SECONDS must be a positive integer.', {
+        property: 'ATTENDANCE_GRACE_SECONDS',
+      });
+    }
+    return {
+      formId: requireScriptProperty_(properties, 'ATTENDANCE_FORM_ID'),
+      emailItemId: Number(requireScriptProperty_(properties, 'ATTENDANCE_FORM_EMAIL_ITEM_ID')),
+      grantItemId: Number(requireScriptProperty_(properties, 'ATTENDANCE_FORM_GRANT_ITEM_ID')),
+      webAppUrl: requireScriptProperty_(properties, 'ATTENDANCE_WEB_APP_URL'),
+      graceSeconds: graceSeconds,
+      qrValidSeconds: 30,
+    };
+  }
+
   function createLiveContext() {
     var config = getConfig();
     var gateway = new Gateway(Domain, config.spreadsheetId);
@@ -35,6 +53,7 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
 
   return {
     getConfig: getConfig,
+    getStudentFlowConfig: getStudentFlowConfig,
     createLiveContext: createLiveContext,
     initializeConfiguredSpreadsheet: initializeConfiguredSpreadsheet,
   };

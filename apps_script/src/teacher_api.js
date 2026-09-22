@@ -1,4 +1,4 @@
-var TeacherApiContract = (function (Domain) {
+var TeacherApiContract = (function (Domain, StudentService) {
   'use strict';
 
   function authenticate_(payload, expectedKey) {
@@ -45,6 +45,12 @@ var TeacherApiContract = (function (Domain) {
           }));
         case 'close_session':
           return Domain.success(service.requestCloseSession(Domain.requireString(payload.session_id, 'session_id')));
+        case 'issue_qr':
+          return Domain.success(StudentService.issueQrTicket(
+            service,
+            context.studentConfig,
+            Domain.requireString(payload.session_id, 'session_id')
+          ));
         default:
           Domain.fail('unknown_action', 'Unsupported POST action.', { action: action });
       }
@@ -54,9 +60,16 @@ var TeacherApiContract = (function (Domain) {
   }
 
   return { execute: execute };
-})(typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain);
+})(
+  typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain,
+  typeof module !== 'undefined' && module.exports ? require('./student_attendance_service.js') : StudentAttendanceService
+);
 
 function doGet(event) {
+  var payload = getTeacherApiPayload_(event);
+  if (payload.route === 'claim') {
+    return createStudentClaimResponse_(payload);
+  }
   return createTeacherApiResponseFromEvent_('GET', event);
 }
 
@@ -75,11 +88,35 @@ function createTeacherApiResponseFromEvent_(method, event) {
 function createTeacherApiResponse_(method, payload) {
   var envelope;
   try {
-    envelope = TeacherApiContract.execute(method, payload, AttendanceConfig.createLiveContext());
+    var context = AttendanceConfig.createLiveContext();
+    if (payload.action === 'issue_qr') {
+      context.studentConfig = AttendanceConfig.getStudentFlowConfig();
+    }
+    envelope = TeacherApiContract.execute(method, payload, context);
   } catch (error) {
     envelope = AttendanceDomain.errorEnvelope(error);
   }
   return createTeacherApiOutput_(envelope);
+}
+
+function createStudentClaimResponse_(payload) {
+  try {
+    var context = AttendanceConfig.createLiveContext();
+    var claim = StudentAttendanceService.claimQrTicket(
+      context.service,
+      AttendanceFormGateway,
+      AttendanceConfig.getStudentFlowConfig(),
+      payload.ticket_id
+    );
+    return StudentAttendanceService.createClaimHtmlOutput(claim);
+  } catch (error) {
+    var envelope = AttendanceDomain.errorEnvelope(error);
+    return HtmlService.createHtmlOutput(
+      '<!doctype html><html><body><p>Không thể mở biểu mẫu điểm danh.</p><p>' +
+        String(envelope.error.message).replace(/&/g, '&amp;').replace(/</g, '&lt;') +
+      '</p></body></html>'
+    ).setTitle('Điểm danh');
+  }
 }
 
 function createTeacherApiOutput_(envelope) {

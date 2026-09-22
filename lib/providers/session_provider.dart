@@ -5,6 +5,7 @@ import '../data/models/class_model.dart';
 import '../data/models/qr_ticket_model.dart';
 import '../data/models/session_model.dart';
 import '../data/services/attendance_service.dart';
+import '../data/services/google_apps_script_attendance_service.dart';
 
 class SessionProvider extends ChangeNotifier {
   final AttendanceService _service;
@@ -13,9 +14,7 @@ class SessionProvider extends ChangeNotifier {
   SessionProvider({
     AttendanceService? service,
     SessionStorage? storage,
-  })  : _service = service ?? GoogleSheetAttendanceService(),
-        // Keep this commented fallback so the original mock mode remains visible.
-        // _service = service ?? MockAttendanceService(),
+  })  : _service = service ?? createConfiguredTeacherAttendanceService(),
         _storage = storage ?? LocalFileSessionStorage();
 
   List<ClassModel> _classes = [];

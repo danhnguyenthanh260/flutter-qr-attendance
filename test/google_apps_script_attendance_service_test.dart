@@ -117,15 +117,32 @@ void main() {
     );
   });
 
-  test('does not invent QR ticket support owned by issue #7', () async {
-    final client = MockClient((request) async => http.Response('', 500));
+  test('requests a server-issued QR claim URL', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      final body = Map<String, dynamic>.from(jsonDecode(request.body) as Map);
+      expect(body['action'], 'issue_qr');
+      expect(body['session_id'], 'SES_1');
+      return http.Response(
+        jsonEncode({
+          'ok': true,
+          'data': {
+            'ticket_code': 'TKT_1',
+            'form_url': 'https://script.google.com/macros/s/example/exec?route=claim&ticket_id=TKT_1',
+            'generation': 3,
+            'valid_seconds': 30,
+            'created_at': '2026-09-19T08:00:00.000Z',
+            'expires_at': '2026-09-19T08:00:30.000Z',
+          },
+        }),
+        200,
+      );
+    });
 
-    expect(
-      createService(client).getNextQrTicket('SES_1'),
-      throwsA(
-        isA<TeacherApiException>()
-            .having((error) => error.code, 'code', 'feature_not_ready'),
-      ),
-    );
+    final ticket = await createService(client).getNextQrTicket('SES_1');
+
+    expect(ticket.ticketCode, 'TKT_1');
+    expect(ticket.generation, 3);
+    expect(ticket.formUrl, contains('route=claim'));
   });
 }
