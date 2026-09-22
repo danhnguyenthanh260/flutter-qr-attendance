@@ -34,8 +34,8 @@ var GoogleSheetsGateway = (function () {
 
       var data = {};
       headers.forEach(function (header, columnIndex) {
-        data[header] = row[columnIndex];
-      });
+        data[header] = this._normalizeCellValue(header, row[columnIndex]);
+      }, this);
       records.push({ rowNumber: index + 2, data: data });
       return records;
     }.bind(this), []);
@@ -123,6 +123,19 @@ var GoogleSheetsGateway = (function () {
       });
     }
     return sheet;
+  };
+
+  // Google Sheets returns calendar cells as Date objects. Session dates are
+  // calendar identifiers, not timestamps, so preserve them in the script time
+  // zone before serializing them to Flutter or comparing slots.
+  Gateway.prototype._normalizeCellValue = function (header, value) {
+    if (header !== 'session_date' || !(value instanceof Date) || Number.isNaN(value.getTime())) {
+      return value;
+    }
+    if (typeof Utilities !== 'undefined' && typeof Session !== 'undefined') {
+      return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    }
+    return value.toISOString().slice(0, 10);
   };
 
   Gateway.prototype._headersForSheet = function (sheetName, sheet) {

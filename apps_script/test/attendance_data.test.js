@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const Domain = require('../src/00_attendance_domain.js');
+const GoogleSheetsGateway = require('../src/01_sheets_gateway.js');
 const Repository = require('../src/02_attendance_repository.js');
 const DataService = require('../src/03_attendance_service.js');
 const TeacherApiContract = require('../src/08_teacher_api.js');
@@ -143,6 +144,17 @@ test('normalizes email keys and rejects malformed email', () => {
     () => Domain.asInteger('', 'slot_number'),
     (error) => error.code === 'validation_error',
   );
+});
+
+test('serializes Google Sheets session dates as calendar dates', () => {
+  const gateway = Object.create(GoogleSheetsGateway.prototype);
+  const value = gateway._normalizeCellValue(
+    'session_date',
+    new Date('2026-09-19T00:00:00.000Z'),
+  );
+
+  assert.equal(value, '2026-09-19');
+  assert.equal(gateway._normalizeCellValue('opened_at', new Date('2026-09-19T00:00:00.000Z')).toISOString(), '2026-09-19T00:00:00.000Z');
 });
 
 test('separates raw form responses from accepted attendance and keeps retries idempotent', () => {

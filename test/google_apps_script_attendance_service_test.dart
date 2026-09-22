@@ -93,6 +93,53 @@ void main() {
     expect(session.status, SessionStatus.closing);
   });
 
+  test('follows the Apps Script ContentService redirect after a POST', () async {
+    final client = MockClient((request) async {
+      if (request.method == 'POST') {
+        return http.Response(
+          '',
+          302,
+          headers: const {
+            'location': 'https://script.googleusercontent.com/macros/echo?ticket=short-lived',
+          },
+        );
+      }
+
+      expect(request.method, 'GET');
+      expect(request.url.host, 'script.googleusercontent.com');
+      return http.Response(
+        jsonEncode({
+          'ok': true,
+          'data': {
+            'id': 'SES_REDIRECT',
+            'class_id': 'CLASS_1',
+            'class_name': 'PRM392 - Flutter',
+            'slot': {
+              'slot_number': 2,
+              'time_range': '09:15 - 10:45',
+              'date': '2026-09-19',
+            },
+            'opened_at': '2026-09-19T08:00:00.000Z',
+            'closed_at': null,
+            'status': 'active',
+          },
+        }),
+        200,
+      );
+    });
+
+    final session = await createService(client).startSession(
+      classId: 'CLASS_1',
+      slot: const SessionSlot(
+        slotNumber: 2,
+        timeRange: '09:15 - 10:45',
+        date: '2026-09-19',
+      ),
+    );
+
+    expect(session.id, 'SES_REDIRECT');
+  });
+
   test('surfaces API envelopes as typed errors', () async {
     final client = MockClient((request) async {
       return http.Response(
