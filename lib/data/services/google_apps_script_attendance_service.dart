@@ -228,14 +228,17 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
-    final initialResponse = await _client.post(
-      _endpoint,
-      headers: const {'content-type': 'application/json'},
-      body: jsonEncode({
+    final request = http.Request('POST', _endpoint)
+      ..followRedirects = false
+      ..maxRedirects = 0
+      ..headers['content-type'] = 'application/json'
+      ..body = jsonEncode({
         'action': action,
         'teacher_key': _teacherKey,
         ...body,
-      }),
+      });
+    final initialResponse = await http.Response.fromStream(
+      await _client.send(request),
     );
     final response = await _followAppsScriptPostRedirect(initialResponse);
     return _decodeEnvelope(response, action);
@@ -259,7 +262,23 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
       return response;
     }
 
-    return _client.get(redirectUri);
+    return _getAppsScriptContent(redirectUri);
+  }
+
+  /// Google occasionally serves a short-lived HTML/interstitial response at a
+  /// newly issued ContentService URL before its JSON body is available. Retry
+  /// the same trusted URL rather than replaying the original teacher action.
+  Future<http.Response> _getAppsScriptContent(Uri redirectUri) async {
+    var response = await _client.get(redirectUri);
+    for (var attempt = 0; attempt < 2 && !_hasJsonBody(response); attempt++) {
+      await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
+      response = await _client.get(redirectUri);
+    }
+    return response;
+  }
+
+  bool _hasJsonBody(http.Response response) {
+    return response.body.trimLeft().startsWith('{');
   }
 
   dynamic _decodeEnvelope(http.Response response, String action) {
