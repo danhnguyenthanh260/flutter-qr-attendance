@@ -140,6 +140,45 @@ void main() {
     expect(session.id, 'SES_REDIRECT');
   });
 
+  test('follows the Apps Script ContentService redirect after a GET', () async {
+    final client = MockClient((request) async {
+      if (request.url.host == 'script.google.com') {
+        expect(request.followRedirects, isFalse);
+        expect(request.maxRedirects, 0);
+        return http.Response(
+          '',
+          302,
+          headers: const {
+            'location': 'https://script.googleusercontent.com/macros/echo?ticket=short-lived',
+          },
+        );
+      }
+
+      expect(request.method, 'GET');
+      expect(request.url.host, 'script.googleusercontent.com');
+      return http.Response(
+        jsonEncode({
+          'ok': true,
+          'data': [
+            {
+              'id': 'CLASS_1',
+              'name': 'Flutter',
+              'course_code': 'PRM392',
+              'room': 'BE-302',
+              'total_students': 32,
+              'schedule_description': 'Slot 2',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    final classes = await createService(client).getClasses();
+
+    expect(classes.single.id, 'CLASS_1');
+  });
+
   test('surfaces API envelopes as typed errors', () async {
     final client = MockClient((request) async {
       return http.Response(
