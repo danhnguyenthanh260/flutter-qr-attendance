@@ -229,7 +229,23 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
       return response;
     }
 
-    return _client.get(redirectUri);
+    return _getAppsScriptContent(redirectUri);
+  }
+
+  /// Google occasionally serves a short-lived HTML/interstitial response at a
+  /// newly issued ContentService URL before its JSON body is available. Retry
+  /// the same trusted URL rather than replaying the original teacher action.
+  Future<http.Response> _getAppsScriptContent(Uri redirectUri) async {
+    var response = await _client.get(redirectUri);
+    for (var attempt = 0; attempt < 2 && !_hasJsonBody(response); attempt++) {
+      await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
+      response = await _client.get(redirectUri);
+    }
+    return response;
+  }
+
+  bool _hasJsonBody(http.Response response) {
+    return response.body.trimLeft().startsWith('{');
   }
 
   dynamic _decodeEnvelope(http.Response response, String action) {

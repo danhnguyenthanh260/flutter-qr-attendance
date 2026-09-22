@@ -181,6 +181,47 @@ void main() {
     expect(classes.single.id, 'CLASS_1');
   });
 
+  test('retries a transient non-JSON Apps Script content response', () async {
+    var contentRequests = 0;
+    final client = MockClient((request) async {
+      if (request.url.host == 'script.google.com') {
+        return http.Response(
+          '',
+          302,
+          headers: const {
+            'location': 'https://script.googleusercontent.com/macros/echo?ticket=short-lived',
+          },
+        );
+      }
+
+      contentRequests++;
+      if (contentRequests == 1) {
+        return http.Response('<html>Loading</html>', 200);
+      }
+      return http.Response(
+        jsonEncode({
+          'ok': true,
+          'data': [
+            {
+              'id': 'CLASS_1',
+              'name': 'Flutter',
+              'course_code': 'PRM392',
+              'room': 'BE-302',
+              'total_students': 32,
+              'schedule_description': 'Slot 2',
+            },
+          ],
+        }),
+        200,
+      );
+    });
+
+    final classes = await createService(client).getClasses();
+
+    expect(classes.single.id, 'CLASS_1');
+    expect(contentRequests, 2);
+  });
+
   test('surfaces API envelopes as typed errors', () async {
     final client = MockClient((request) async {
       return http.Response(
