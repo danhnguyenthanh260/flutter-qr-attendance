@@ -20,6 +20,12 @@ class AppConfig {
   static const String teacherId =
       String.fromEnvironment('ATTENDANCE_TEACHER_ID');
 
+  /// Opt-in switch for the seeded in-memory dataset. It is never enabled by
+  /// default, so a release without teacher API configuration still fails closed
+  /// instead of showing demo numbers as if they were real attendance.
+  static const bool useSeededMockData =
+      bool.fromEnvironment('ATTENDANCE_USE_MOCK');
+
   static bool get hasTeacherApiConfiguration =>
       teacherApiUrl.isNotEmpty &&
       teacherApiKey.isNotEmpty &&
