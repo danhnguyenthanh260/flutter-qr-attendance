@@ -494,12 +494,20 @@ class _HistoryDetailPane extends StatelessWidget {
                 );
               }
 
-              return Column(
-                children: [
-                  Expanded(child: AttendanceRosterTable(summary: summary)),
-                  const SizedBox(height: 16),
-                  SizedBox(height: 260, child: RetryEventsPanel(summary: summary)),
-                ],
+              return SingleChildScrollView(
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: 380,
+                      child: AttendanceRosterTable(summary: summary),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 300,
+                      child: RetryEventsPanel(summary: summary),
+                    ),
+                  ],
+                ),
               );
             },
           ),

@@ -169,12 +169,17 @@ class _TodayAttendanceViewState extends State<TodayAttendanceView> {
           );
         }
 
-        return Column(
-          children: [
-            Expanded(child: AttendanceRosterTable(summary: summary)),
-            const SizedBox(height: 16),
-            SizedBox(height: 280, child: RetryEventsPanel(summary: summary)),
-          ],
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              SizedBox(
+                height: 420,
+                child: AttendanceRosterTable(summary: summary),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(height: 320, child: RetryEventsPanel(summary: summary)),
+            ],
+          ),
         );
       },
     );

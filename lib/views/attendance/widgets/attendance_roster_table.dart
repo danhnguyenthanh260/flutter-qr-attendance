@@ -88,19 +88,31 @@ class _AttendanceRosterTableState extends State<AttendanceRosterTable> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Icon(Icons.checklist_rtl_rounded,
-                  size: 18, color: AppColors.primary),
-              const SizedBox(width: 10),
-              const Text('Danh sách đối chiếu roster',
-                  style: AppTypography.heading3),
-              const SizedBox(width: 10),
-              Text(
-                '$visibleCount / ${widget.summary.totalStudents}',
-                style: AppTypography.caption,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.checklist_rtl_rounded,
+                      size: 18, color: AppColors.primary),
+                  const SizedBox(width: 10),
+                  const Flexible(
+                    child: Text(
+                      'Danh sách đối chiếu roster',
+                      style: AppTypography.heading3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '$visibleCount / ${widget.summary.totalStudents}',
+                    style: AppTypography.caption,
+                  ),
+                ],
               ),
-              const Spacer(),
               SizedBox(
                 width: 240,
                 height: 38,
