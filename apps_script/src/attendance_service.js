@@ -75,6 +75,24 @@ var AttendanceDataService = (function (Repository) {
     });
   };
 
+  Service.prototype.issueQrTicket = function (input) {
+    return this._mutate(function () {
+      return this._repository.issueQrTicket(input);
+    });
+  };
+
+  Service.prototype.claimQrTicket = function (input) {
+    return this._mutate(function () {
+      return this._repository.claimQrTicket(input);
+    });
+  };
+
+  Service.prototype.processFormSubmission = function (input) {
+    return this._mutate(function () {
+      return this._repository.processFormSubmission(input);
+    });
+  };
+
   Service.prototype._mutate = function (callback) {
     return this._gateway.withLock(callback.bind(this));
   };

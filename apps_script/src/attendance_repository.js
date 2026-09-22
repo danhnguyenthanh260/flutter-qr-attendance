@@ -230,7 +230,7 @@ var AttendanceRepository = (function (Domain) {
     var record = {
       form_response_id: responseId,
       session_id: sessionId,
-      ticket_id: Domain.optionalString(input.ticket_id),
+      grant_id: Domain.optionalString(input.grant_id),
       submitted_at: Domain.isoTimestamp(input.submitted_at, 'submitted_at', this._clock()),
       received_at: now,
       email: email,
@@ -322,6 +322,211 @@ var AttendanceRepository = (function (Domain) {
     return record;
   };
 
+  Repository.prototype.issueQrTicket = function (input) {
+    input = input || {};
+    var sessionId = Domain.requireString(input.session_id, 'session_id');
+    var session = this._requireSession(sessionId);
+    if (session.status !== 'active') {
+      Domain.fail('session_not_active', 'QR codes can only be issued for an active session.', {
+        session_id: sessionId,
+        status: session.status,
+      });
+    }
+
+    var validSeconds = Domain.asInteger(input.valid_seconds, 'valid_seconds');
+    if (validSeconds <= 0) {
+      Domain.fail('validation_error', 'valid_seconds must be greater than zero.', {
+        field: 'valid_seconds',
+      });
+    }
+    var tickets = this._records(Domain.SHEETS.ticketStates).filter(function (record) {
+      return record.session_id === sessionId;
+    });
+    var generation = tickets.reduce(function (current, record) {
+      return Math.max(current, Number(record.generation) || 0);
+    }, 0) + 1;
+    var issuedAt = this._clock();
+    var ticket = this.saveTicketState({
+      ticket_id: this._idFactory('TKT'),
+      session_id: sessionId,
+      generation: generation,
+      issued_at: issuedAt.toISOString(),
+      expires_at: new Date(issuedAt.getTime() + validSeconds * 1000).toISOString(),
+      status: 'active',
+    });
+    return this._toTicket(ticket);
+  };
+
+  Repository.prototype.claimQrTicket = function (input) {
+    input = input || {};
+    var ticketId = Domain.requireString(input.ticket_id, 'ticket_id');
+    var graceSeconds = Domain.asInteger(input.grace_seconds, 'grace_seconds');
+    if (graceSeconds <= 0) {
+      Domain.fail('validation_error', 'grace_seconds must be greater than zero.', {
+        field: 'grace_seconds',
+      });
+    }
+    var ticketEntry = this._findEntry(Domain.SHEETS.ticketStates, function (record) {
+      return record.ticket_id === ticketId;
+    });
+    if (!ticketEntry) {
+      Domain.fail('ticket_not_found', 'QR ticket does not exist.', { ticket_id: ticketId });
+    }
+    var ticket = ticketEntry.data;
+    var now = this._clock();
+    if (new Date(ticket.expires_at).getTime() <= now.getTime()) {
+      this._gateway.update(Domain.SHEETS.ticketStates, ticketEntry.rowNumber, {
+        status: 'expired',
+        updated_at: now.toISOString(),
+      });
+      Domain.fail('ticket_expired', 'QR ticket has expired.', { ticket_id: ticketId });
+    }
+    if (ticket.status !== 'active') {
+      Domain.fail('ticket_unavailable', 'QR ticket is not available for a new claim.', {
+        ticket_id: ticketId,
+        status: ticket.status,
+      });
+    }
+    var session = this._requireSession(ticket.session_id);
+    if (session.status !== 'active') {
+      Domain.fail('session_not_active', 'Attendance session is no longer accepting new QR claims.', {
+        session_id: ticket.session_id,
+        status: session.status,
+      });
+    }
+
+    var grant = {
+      grant_id: this._idFactory('GRANT'),
+      ticket_id: ticketId,
+      session_id: ticket.session_id,
+      issued_at: now.toISOString(),
+      expires_at: new Date(now.getTime() + graceSeconds * 1000).toISOString(),
+      status: 'issued',
+      form_response_id: '',
+      email: '',
+      email_key: '',
+      updated_at: now.toISOString(),
+    };
+    this._gateway.append(Domain.SHEETS.grants, grant);
+    return this._toGrant(grant);
+  };
+
+  Repository.prototype.processFormSubmission = function (input) {
+    input = input || {};
+    var formResponseId = Domain.requireString(input.form_response_id, 'form_response_id');
+    var existingRaw = this._findEntry(Domain.SHEETS.formResponses, function (record) {
+      return record.form_response_id === formResponseId;
+    });
+    if (existingRaw && existingRaw.data.processing_status !== 'processing_error') {
+      return {
+        accepted: existingRaw.data.processing_status === 'accepted',
+        outcome: existingRaw.data.processing_status,
+        replayed: true,
+      };
+    }
+
+    var grantId = Domain.requireString(input.grant_id, 'grant_id');
+    var grantEntry = this._findEntry(Domain.SHEETS.grants, function (record) {
+      return record.grant_id === grantId;
+    });
+    if (!grantEntry) {
+      Domain.fail('grant_not_found', 'Attendance grant does not exist.', { grant_id: grantId });
+    }
+    var grant = grantEntry.data;
+    var email = Domain.normalizeEmail(input.email);
+    var raw = this.recordRawFormResponse({
+      form_response_id: formResponseId,
+      session_id: grant.session_id,
+      grant_id: grantId,
+      submitted_at: input.submitted_at,
+      email: email,
+      raw_payload: input.raw_payload || {},
+    });
+    if (!raw.created) {
+      return { accepted: false, outcome: raw.record.processing_status, replayed: true };
+    }
+
+    var now = this._clock();
+    if (grant.status !== 'issued') {
+      return this._rejectGrantSubmission(grantEntry, formResponseId, email, 'grant_replayed', 'grant_already_used', '');
+    }
+    if (new Date(grant.expires_at).getTime() < now.getTime()) {
+      return this._rejectGrantSubmission(grantEntry, formResponseId, email, 'grant_expired', 'grace_expired', 'expired');
+    }
+    var session = this._requireSession(grant.session_id);
+    if (session.status !== 'active' && session.status !== 'closing') {
+      return this._rejectGrantSubmission(grantEntry, formResponseId, email, 'session_closed', 'session_not_accepting_submissions', 'used');
+    }
+    var rosterRecord = this._records(Domain.SHEETS.roster).find(function (record) {
+      return record.class_id === session.class_id &&
+        record.email_key === email &&
+        Domain.asBoolean(record.is_active);
+    });
+    if (!rosterRecord) {
+      return this._rejectGrantSubmission(grantEntry, formResponseId, email, 'roster_mismatch', 'email_not_in_roster', 'used');
+    }
+
+    var attendance = this.recordAttendance({
+      session_id: grant.session_id,
+      form_response_id: formResponseId,
+      email: email,
+      student_name: rosterRecord.student_name,
+    });
+    if (!attendance.created) {
+      this.recordAttempt({
+        session_id: grant.session_id,
+        form_response_id: formResponseId,
+        email: email,
+        attempt_type: 'duplicate_email',
+        reason: attendance.reason,
+      });
+      this._consumeGrant(grantEntry, formResponseId, email);
+      this._setRawProcessing(formResponseId, 'duplicate');
+      return { accepted: false, outcome: 'duplicate', replayed: false };
+    }
+
+    this._consumeGrant(grantEntry, formResponseId, email);
+    this._setRawProcessing(formResponseId, 'accepted');
+    return { accepted: true, outcome: 'accepted', replayed: false, attendance: attendance.record };
+  };
+
+  Repository.prototype._rejectGrantSubmission = function (grantEntry, formResponseId, email, attemptType, rawStatus, grantStatus) {
+    this.recordAttempt({
+      session_id: grantEntry.data.session_id,
+      form_response_id: formResponseId,
+      email: email,
+      attempt_type: attemptType,
+      reason: rawStatus,
+    });
+    if (grantStatus) {
+      this._consumeGrant(grantEntry, formResponseId, email, grantStatus);
+    }
+    this._setRawProcessing(formResponseId, rawStatus);
+    return { accepted: false, outcome: rawStatus, replayed: false };
+  };
+
+  Repository.prototype._consumeGrant = function (grantEntry, formResponseId, email, status) {
+    this._gateway.update(Domain.SHEETS.grants, grantEntry.rowNumber, {
+      status: status || 'used',
+      form_response_id: formResponseId,
+      email: email,
+      email_key: email,
+      updated_at: this._nowIso(),
+    });
+  };
+
+  Repository.prototype._setRawProcessing = function (formResponseId, processingStatus) {
+    var rawEntry = this._findEntry(Domain.SHEETS.formResponses, function (record) {
+      return record.form_response_id === formResponseId;
+    });
+    if (rawEntry) {
+      this._gateway.update(Domain.SHEETS.formResponses, rawEntry.rowNumber, {
+        processing_status: processingStatus,
+        updated_at: this._nowIso(),
+      });
+    }
+  };
+
   Repository.prototype._records = function (sheetName) {
     return this._gateway.read(sheetName).map(function (entry) {
       return entry.data;
@@ -391,12 +596,34 @@ var AttendanceRepository = (function (Domain) {
     return {
       form_response_id: record.form_response_id,
       session_id: record.session_id,
-      ticket_id: record.ticket_id,
+      grant_id: record.grant_id,
       submitted_at: record.submitted_at,
       received_at: record.received_at,
       email: record.email,
       email_key: record.email_key,
       processing_status: record.processing_status,
+    };
+  };
+
+  Repository.prototype._toTicket = function (record) {
+    return {
+      ticket_id: record.ticket_id,
+      session_id: record.session_id,
+      generation: Domain.asInteger(record.generation, 'generation'),
+      issued_at: record.issued_at,
+      expires_at: record.expires_at,
+      status: record.status,
+    };
+  };
+
+  Repository.prototype._toGrant = function (record) {
+    return {
+      grant_id: record.grant_id,
+      ticket_id: record.ticket_id,
+      session_id: record.session_id,
+      issued_at: record.issued_at,
+      expires_at: record.expires_at,
+      status: record.status,
     };
   };
 

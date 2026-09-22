@@ -117,10 +117,8 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   @override
   Future<QrTicketModel> getNextQrTicket(String sessionId) async {
-    throw const TeacherApiException(
-      code: 'feature_not_ready',
-      message: 'QR ticket issuance is owned by issue #7 and is not available from the teacher API yet.',
-    );
+    final data = await _post('issue_qr', {'session_id': sessionId});
+    return QrTicketModel.fromJson(_asMap(data, 'issue_qr response'));
   }
 
   Future<dynamic> _get(
