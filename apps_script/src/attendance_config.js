@@ -51,11 +51,20 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
     return context.service.initializeSchema();
   }
 
+  // Run manually once for the pre-existing Test_PRM392 layout. It preserves the
+  // old attendance/session tabs as LegacyAttendance and LegacySessions, then
+  // creates the canonical sheets used by the QR + Google Form flow.
+  function migrateConfiguredLegacySpreadsheet() {
+    var config = getConfig();
+    return AttendanceLegacyMigration.migrate(SpreadsheetApp.openById(config.spreadsheetId));
+  }
+
   return {
     getConfig: getConfig,
     getStudentFlowConfig: getStudentFlowConfig,
     createLiveContext: createLiveContext,
     initializeConfiguredSpreadsheet: initializeConfiguredSpreadsheet,
+    migrateConfiguredLegacySpreadsheet: migrateConfiguredLegacySpreadsheet,
   };
 })(
   typeof module !== 'undefined' && module.exports ? require('./attendance_domain.js') : AttendanceDomain,
@@ -65,4 +74,8 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = AttendanceConfig;
+}
+
+function migrateLegacyTestPrm392() {
+  return AttendanceConfig.migrateConfiguredLegacySpreadsheet();
 }
