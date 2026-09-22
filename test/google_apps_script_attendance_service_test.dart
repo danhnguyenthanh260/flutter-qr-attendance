@@ -96,6 +96,8 @@ void main() {
   test('follows the Apps Script ContentService redirect after a POST', () async {
     final client = MockClient((request) async {
       if (request.method == 'POST') {
+        expect(request.followRedirects, isFalse);
+        expect(request.maxRedirects, 0);
         return http.Response(
           '',
           302,
