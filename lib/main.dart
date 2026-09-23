@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
+
 import 'core/constants/app_colors.dart';
 import 'data/services/attendance_service.dart';
 import 'data/services/google_apps_script_attendance_service.dart';
@@ -16,15 +17,17 @@ void main() async {
 
   final AttendanceService attendanceService =
       createConfiguredTeacherAttendanceService();
+  final sessionProvider = SessionProvider(service: attendanceService);
 
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: sessionProvider),
         ChangeNotifierProvider(
-          create: (_) => SessionProvider(service: attendanceService),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => AttendanceResultsProvider(service: attendanceService),
+          create: (_) => AttendanceResultsProvider(
+            service: attendanceService,
+            preferredSession: () => sessionProvider.activeSession,
+          ),
         ),
         ChangeNotifierProvider(
           create: (_) => AttendanceHistoryProvider(service: attendanceService),

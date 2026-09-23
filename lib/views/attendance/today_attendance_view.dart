@@ -59,8 +59,10 @@ class _TodayAttendanceViewState extends State<TodayAttendanceView> {
             children: [
               CircularProgressIndicator(color: AppColors.primary),
               SizedBox(height: 16),
-              Text('Đang đọc dữ liệu điểm danh...',
-                  style: AppTypography.bodySecondary),
+              Text(
+                'Đang đọc dữ liệu điểm danh...',
+                style: AppTypography.bodySecondary,
+              ),
             ],
           ),
         );
@@ -91,7 +93,8 @@ class _TodayAttendanceViewState extends State<TodayAttendanceView> {
       case AttendanceDataStatus.rosterMissing:
         return AttendanceStateMessage.warning(
           title: 'Lớp chưa có danh sách sinh viên',
-          message: provider.errorMessage ??
+          message:
+              provider.errorMessage ??
               'Không đọc được roster của lớp. Hệ thống không hiển thị số 0 và '
                   'không kết luận cả lớp vắng khi thiếu danh sách.',
           action: FilledButton.icon(
@@ -104,7 +107,8 @@ class _TodayAttendanceViewState extends State<TodayAttendanceView> {
       case AttendanceDataStatus.unavailable:
         return AttendanceStateMessage.error(
           title: 'Không đọc được dữ liệu điểm danh',
-          message: provider.errorMessage ??
+          message:
+              provider.errorMessage ??
               'Kết nối tới máy chủ đang gặp sự cố. Số liệu cũ không được hiển '
                   'thị như số liệu đã xác nhận.',
           action: FilledButton.icon(
@@ -400,8 +404,7 @@ class _StatusNoticeBanner extends StatelessWidget {
           icon: Icons.verified_outlined,
           accent: AppColors.success,
           background: AppColors.successBg,
-          message:
-              'Phiên đã chốt sổ. Sinh viên không có bản ghi điểm danh được tính là vắng.',
+          message: 'Phiên đã chốt sổ. Sinh viên không có bản ghi điểm danh được tính là vắng.',
         ),
       );
     }

@@ -81,12 +81,17 @@ AttendanceService createConfiguredTeacherAttendanceService() {
 /// explicitly supplies a deployed endpoint and an authenticated teacher identity.
 /// QR ticket issuance remains owned by issue #7 and deliberately fails closed here.
 class GoogleAppsScriptAttendanceService implements AttendanceService {
+  static const Duration _classesCacheTtl = Duration(minutes: 5);
+
   final Uri _endpoint;
   final String _teacherKey;
   final String _teacherId;
   final http.Client _client;
   final DateTime Function() _clock;
   final Map<String, String> _pendingStartRequestIds = {};
+  List<ClassModel>? _classesCache;
+  DateTime? _classesCachedAt;
+  Future<List<ClassModel>>? _classesInFlight;
 
   GoogleAppsScriptAttendanceService({
     required Uri endpoint,
@@ -118,10 +123,34 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   @override
   Future<List<ClassModel>> getClasses() async {
-    final data = await _get('classes');
-    return _asList(data, 'classes')
-        .map((item) => ClassModel.fromJson(_asMap(item, 'class item')))
-        .toList(growable: false);
+    final cached = _classesCache;
+    final cachedAt = _classesCachedAt;
+    if (cached != null &&
+        cachedAt != null &&
+        _clock().difference(cachedAt) < _classesCacheTtl) {
+      return cached;
+    }
+
+    final inFlight = _classesInFlight;
+    if (inFlight != null) return inFlight;
+
+    final request = _loadClasses();
+    _classesInFlight = request;
+    return request;
+  }
+
+  Future<List<ClassModel>> _loadClasses() async {
+    try {
+      final data = await _get('classes');
+      final classes = _asList(data, 'classes')
+          .map((item) => ClassModel.fromJson(_asMap(item, 'class item')))
+          .toList(growable: false);
+      _classesCache = classes;
+      _classesCachedAt = _clock();
+      return classes;
+    } finally {
+      _classesInFlight = null;
+    }
   }
 
   @override
@@ -183,10 +212,10 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     String? classId,
     String? date,
   }) async {
-    final data = await _get('sessions', query: {
-      'class_id': ?classId,
-      'date': ?date,
-    });
+    final data = await _get(
+      'sessions',
+      query: {'class_id': ?classId, 'date': ?date},
+    );
     return _asList(data, 'sessions')
         .map((item) => AttendanceSession.fromJson(_asMap(item, 'session item')))
         .toList(growable: false);
@@ -194,7 +223,10 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   @override
   Future<SessionResults> getSessionResults(String sessionId) async {
-    final data = await _get('session_results', query: {'session_id': sessionId});
+    final data = await _get(
+      'session_results',
+      query: {'session_id': sessionId},
+    );
     return SessionResults.fromJson(
       _asMap(data, 'session_results response'),
       fetchedAt: _clock(),

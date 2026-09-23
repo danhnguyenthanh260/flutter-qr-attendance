@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+
 import '../core/storage/session_storage.dart';
 import '../data/models/class_model.dart';
 import '../data/models/qr_ticket_model.dart';
@@ -11,11 +13,9 @@ class SessionProvider extends ChangeNotifier {
   final AttendanceService _service;
   final SessionStorage _storage;
 
-  SessionProvider({
-    AttendanceService? service,
-    SessionStorage? storage,
-  })  : _service = service ?? createConfiguredTeacherAttendanceService(),
-        _storage = storage ?? LocalFileSessionStorage();
+  SessionProvider({AttendanceService? service, SessionStorage? storage})
+    : _service = service ?? createConfiguredTeacherAttendanceService(),
+      _storage = storage ?? LocalFileSessionStorage();
 
   List<ClassModel> _classes = [];
   ClassModel? _selectedClass;
@@ -63,30 +63,40 @@ class SessionProvider extends ChangeNotifier {
 
     try {
       _classes = await _service.getClasses();
+      final startupWork = <Future<void>>[_restoreActiveSession()];
       if (_classes.isNotEmpty) {
-        await selectClass(_classes.first);
+        startupWork.add(selectClass(_classes.first));
       }
-
-      // Check server active session and local storage
-      final serverSession = await _service.getActiveSession();
-      final cachedSession = await _storage.loadActiveSession();
-
-      if (serverSession != null && serverSession.status == SessionStatus.active) {
-        _activeSession = serverSession;
-        await _storage.saveActiveSession(serverSession);
-        await startQrRotation();
-      } else if (cachedSession != null) {
-        // Cache exists but server is not active or closed -> clear cache, no reopening
-        await _storage.clearActiveSession();
-        _activeSession = null;
-      } else {
-        _activeSession = null;
-      }
+      await Future.wait(startupWork);
     } catch (e) {
       _errorMessage = 'Không thể tải dữ liệu phiên: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Slots and the server-side active-session lookup are independent. Starting
+  /// them together prevents the launch screen from waiting for two Apps Script
+  /// round trips in sequence.
+  Future<void> _restoreActiveSession() async {
+    final values = await Future.wait<Object?>([
+      _service.getActiveSession(),
+      _storage.loadActiveSession(),
+    ]);
+    final serverSession = values[0] as AttendanceSession?;
+    final cachedSession = values[1] as AttendanceSession?;
+
+    if (serverSession != null && serverSession.status == SessionStatus.active) {
+      _activeSession = serverSession;
+      await _storage.saveActiveSession(serverSession);
+      await startQrRotation();
+    } else if (cachedSession != null) {
+      // Cache exists but server is not active or closed -> clear cache, no reopening.
+      await _storage.clearActiveSession();
+      _activeSession = null;
+    } else {
+      _activeSession = null;
     }
   }
 
@@ -253,7 +263,8 @@ class SessionProvider extends ChangeNotifier {
       return false;
     } catch (e) {
       _isClosingSession = false;
-      _errorMessage = 'Lỗi khi đóng phiên: ${e.toString().replaceFirst('Exception: ', '')}';
+      _errorMessage =
+          'Lỗi khi đóng phiên: ${e.toString().replaceFirst('Exception: ', '')}';
       notifyListeners();
       return false;
     }

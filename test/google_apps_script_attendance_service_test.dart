@@ -48,6 +48,44 @@ void main() {
     expect(classes.single.totalStudents, 32);
   });
 
+  test(
+    'coalesces and caches class reads for the shared teacher service',
+    () async {
+      var requests = 0;
+      final client = MockClient((request) async {
+        requests++;
+        return http.Response(
+          jsonEncode({
+            'ok': true,
+            'data': [
+              {
+                'id': 'CLASS_1',
+                'name': 'Flutter',
+                'course_code': 'PRM392',
+                'room': 'BE-302',
+                'total_students': 32,
+                'schedule_description': 'Slot 2',
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      final service = createService(client);
+
+      final responses = await Future.wait([
+        service.getClasses(),
+        service.getClasses(),
+      ]);
+      expect(responses.first.single.id, 'CLASS_1');
+      expect(responses.last.single.id, 'CLASS_1');
+      expect(requests, 1);
+
+      await service.getClasses();
+      expect(requests, 1);
+    },
+  );
+
   test('posts a typed session request and maps a closing response', () async {
     final client = MockClient((request) async {
       expect(request.method, 'POST');

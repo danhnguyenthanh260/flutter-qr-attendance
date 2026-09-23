@@ -60,6 +60,36 @@ void main() {
     expect(provider.canAutoRefresh, isTrue);
   });
 
+  test(
+    'dùng phiên đang mở đã biết để hiện kết quả trước khi tải selector',
+    () async {
+      final active = buildSession(
+        id: 'SES_ACTIVE',
+        status: SessionStatus.active,
+      );
+      final older = buildSession(
+        id: 'SES_OLDER',
+        status: SessionStatus.closed,
+        openedAt: kBaseTime.subtract(const Duration(hours: 2)),
+      );
+      final service = FakeAttendanceService(sessions: [active, older])
+        ..setResults(buildResults(session: active, roster: roster));
+
+      final provider = AttendanceResultsProvider(
+        service: service,
+        clock: () => kBaseTime,
+        preferredSession: () => active,
+      );
+      addTearDown(provider.dispose);
+
+      await provider.initialize();
+
+      expect(provider.status, AttendanceDataStatus.ok);
+      expect(provider.selectedSession!.id, active.id);
+      expect(provider.summary!.scope.sessionIds, [active.id]);
+    },
+  );
+
   test('không có phiên nào thì báo rõ, không hiển thị số 0', () async {
     final service = FakeAttendanceService(sessions: const []);
 
@@ -120,39 +150,41 @@ void main() {
     expect(provider.refreshErrorMessage, contains('Mất kết nối'));
   });
 
-  test('đọc lại sau mất mạng không mất sự kiện và không nhân đôi cảnh báo',
-      () async {
-    final service = FakeAttendanceService(sessions: [buildSession()])
-      ..setResults(
-        buildResults(
-          roster: roster,
-          attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
-          attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_1')],
-        ),
-      );
+  test(
+    'đọc lại sau mất mạng không mất sự kiện và không nhân đôi cảnh báo',
+    () async {
+      final service = FakeAttendanceService(sessions: [buildSession()])
+        ..setResults(
+          buildResults(
+            roster: roster,
+            attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
+            attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_1')],
+          ),
+        );
 
-    final provider = createProvider(service);
-    await provider.initialize();
-    expect(provider.summary!.retryEventCount, 1);
+      final provider = createProvider(service);
+      await provider.initialize();
+      expect(provider.summary!.retryEventCount, 1);
 
-    service.failSession('SES_1', Exception('Mất kết nối'));
-    await provider.refresh();
-    expect(provider.summary!.retryEventCount, 1);
+      service.failSession('SES_1', Exception('Mất kết nối'));
+      await provider.refresh();
+      expect(provider.summary!.retryEventCount, 1);
 
-    service
-      ..clearFailure('SES_1')
-      ..setResults(
-        buildResults(
-          roster: roster,
-          attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
-          attempts: [buildAttempt('binh@fpt.edu.vn', id: 'ATM_2')],
-        ),
-      );
-    await provider.refresh();
+      service
+        ..clearFailure('SES_1')
+        ..setResults(
+          buildResults(
+            roster: roster,
+            attendance: [buildAttendance('an@fpt.edu.vn', id: 'ATT_1')],
+            attempts: [buildAttempt('binh@fpt.edu.vn', id: 'ATM_2')],
+          ),
+        );
+      await provider.refresh();
 
-    expect(provider.summary!.retryEventCount, 2);
-    expect(provider.refreshErrorMessage, isNull);
-  });
+      expect(provider.summary!.retryEventCount, 2);
+      expect(provider.refreshErrorMessage, isNull);
+    },
+  );
 
   test('đọc lặp cùng một phản hồi không làm tăng số liệu', () async {
     final service = FakeAttendanceService(sessions: [buildSession()])

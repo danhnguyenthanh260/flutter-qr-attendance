@@ -25,6 +25,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
 
   final AttendanceService _service;
   final DateTime Function() _clock;
+  final AttendanceSession? Function()? preferredSession;
   final Duration refreshInterval;
 
   List<ClassModel> _classes = const [];
@@ -51,11 +52,12 @@ class AttendanceResultsProvider extends ChangeNotifier {
   AttendanceResultsProvider({
     AttendanceService? service,
     DateTime Function()? clock,
+    this.preferredSession,
     bool autoRefresh = true,
     this.refreshInterval = defaultRefreshInterval,
-  })  : _service = service ?? createConfiguredTeacherAttendanceService(),
-        _clock = clock ?? DateTime.now,
-        _autoRefreshEnabled = autoRefresh {
+  }) : _service = service ?? createConfiguredTeacherAttendanceService(),
+       _clock = clock ?? DateTime.now,
+       _autoRefreshEnabled = autoRefresh {
     _selectedDate = dateKey(_clock());
   }
 
@@ -79,7 +81,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
       _selectedSession != null &&
       _selectedSession!.status != SessionStatus.closed;
 
-  Future<void> initialize() async {
+  Future<void> initialize({AttendanceSession? preferredSession}) async {
     if (_isInitialized) return;
     _isInitialized = true;
     _status = AttendanceDataStatus.loading;
@@ -103,7 +105,9 @@ class AttendanceResultsProvider extends ChangeNotifier {
     }
 
     _selectedClass ??= _classes.first;
-    await _reloadScope();
+    await _reloadScope(
+      preferredSession: preferredSession ?? this.preferredSession?.call(),
+    );
   }
 
   Future<void> selectClass(ClassModel? classModel) async {
@@ -157,7 +161,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _reloadScope() async {
+  Future<void> _reloadScope({AttendanceSession? preferredSession}) async {
     final token = ++_requestToken;
     _cancelTimer();
 
@@ -169,6 +173,19 @@ class AttendanceResultsProvider extends ChangeNotifier {
     _refreshErrorMessage = null;
     _lastUpdatedAt = null;
     _notify();
+
+    final preferred = _preferredSessionForCurrentScope(preferredSession);
+    if (preferred != null) {
+      _selectedClass = _classes.firstWhere(
+        (item) => item.id == preferred.classId,
+      );
+      _sessions = [preferred];
+      _selectedSession = preferred;
+      await _loadResults(token);
+      _scheduleNextRefresh();
+      unawaited(_refreshSessionOptionsInBackground(token));
+      return;
+    }
 
     try {
       final sessions = await _service.listSessions(
@@ -197,6 +214,37 @@ class AttendanceResultsProvider extends ChangeNotifier {
 
     await _loadResults(token);
     _scheduleNextRefresh();
+  }
+
+  AttendanceSession? _preferredSessionForCurrentScope(
+    AttendanceSession? session,
+  ) {
+    if (session == null || session.slot.date != _selectedDate) return null;
+    return _classes.any((item) => item.id == session.classId) ? session : null;
+  }
+
+  /// The active session is already known by the session screen. Render its
+  /// results first, then fill the session selector without blocking the table.
+  Future<void> _refreshSessionOptionsInBackground(int token) async {
+    try {
+      final sessions = await _service.listSessions(
+        classId: _selectedClass?.id,
+        date: _selectedDate,
+      );
+      if (token != _requestToken) return;
+
+      final ordered = [...sessions]
+        ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
+      final selected = _selectedSession;
+      if (selected != null && !ordered.any((item) => item.id == selected.id)) {
+        ordered.insert(0, selected);
+      }
+      _sessions = ordered;
+      _notify();
+    } catch (_) {
+      // Results are already confirmed. A delayed session-selector refresh must
+      // not hide them just because this non-critical request failed.
+    }
   }
 
   Future<void> _loadResults(int token) async {
