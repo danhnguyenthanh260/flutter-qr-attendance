@@ -421,64 +421,71 @@ class _HistoryDetailPane extends StatelessWidget {
   }
 
   Widget _buildDetail(AttendanceSummary summary) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(summary.scope.label, style: AppTypography.heading3),
-            Text(
-              'Đọc lúc ${DateFormat('dd/MM HH:mm:ss').format(summary.asOf)}',
-              style: AppTypography.caption,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktopWideAndTall =
+            constraints.maxWidth >= 960 && constraints.maxHeight >= 620;
+
+        final headerChildren = [
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(summary.scope.label, style: AppTypography.heading3),
+              Text(
+                'Đọc lúc ${DateFormat('dd/MM HH:mm:ss').format(summary.asOf)}',
+                style: AppTypography.caption,
+              ),
+              Text(
+                'Nguồn: ${summary.scope.sessionIds.join(', ')}',
+                style: AppTypography.caption,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (summary.sessions.length > 1) ...[
+            const AttendanceInlineBanner(
+              icon: Icons.merge_type_rounded,
+              accent: AppColors.info,
+              background: Color(0xFFF0F9FF),
+              message:
+                  'Buổi này có nhiều phiên. Sinh viên được hợp nhất theo email nên '
+                  'không bị cộng trùng giữa các phiên.',
             ),
-            Text(
-              'Nguồn: ${summary.scope.sessionIds.join(', ')}',
-              style: AppTypography.caption,
-            ),
+            const SizedBox(height: 12),
           ],
-        ),
-        const SizedBox(height: 12),
-        if (summary.sessions.length > 1) ...[
-          const AttendanceInlineBanner(
-            icon: Icons.merge_type_rounded,
-            accent: AppColors.info,
-            background: Color(0xFFF0F9FF),
-            message:
-                'Buổi này có nhiều phiên. Sinh viên được hợp nhất theo email nên '
-                'không bị cộng trùng giữa các phiên.',
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (summary.rosterChangedBetweenSessions) ...[
-          const AttendanceInlineBanner(
-            icon: Icons.published_with_changes_rounded,
-            accent: AppColors.warning,
-            background: AppColors.warningBg,
-            message:
-                'Roster có thay đổi giữa các phiên của buổi này. Số liệu dùng roster hợp nhất mới nhất.',
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (!summary.isFinalized) ...[
-          const AttendanceInlineBanner(
-            icon: Icons.hourglass_top_rounded,
-            accent: AppColors.warning,
-            background: AppColors.warningBg,
-            message:
-                'Buổi này còn phiên chưa chốt nên số liệu là tạm tính, chưa kết luận vắng.',
-          ),
-          const SizedBox(height: 12),
-        ],
-        AttendanceSummaryCards(summary: summary),
-        const SizedBox(height: 16),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth >= 960) {
-                return Row(
+          if (summary.rosterChangedBetweenSessions) ...[
+            const AttendanceInlineBanner(
+              icon: Icons.published_with_changes_rounded,
+              accent: AppColors.warning,
+              background: AppColors.warningBg,
+              message:
+                  'Roster có thay đổi giữa các phiên của buổi này. Số liệu dùng roster hợp nhất mới nhất.',
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (!summary.isFinalized) ...[
+            const AttendanceInlineBanner(
+              icon: Icons.hourglass_top_rounded,
+              accent: AppColors.warning,
+              background: AppColors.warningBg,
+              message:
+                  'Buổi này còn phiên chưa chốt nên số liệu là tạm tính, chưa kết luận vắng.',
+            ),
+            const SizedBox(height: 12),
+          ],
+          AttendanceSummaryCards(summary: summary),
+          const SizedBox(height: 16),
+        ];
+
+        if (isDesktopWideAndTall) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...headerChildren,
+              Expanded(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
@@ -491,11 +498,37 @@ class _HistoryDetailPane extends StatelessWidget {
                       child: RetryEventsPanel(summary: summary),
                     ),
                   ],
-                );
-              }
+                ),
+              ),
+            ],
+          );
+        }
 
-              return SingleChildScrollView(
-                child: Column(
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...headerChildren,
+              if (constraints.maxWidth >= 960)
+                SizedBox(
+                  height: 480,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: AttendanceRosterTable(summary: summary),
+                      ),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 340,
+                        child: RetryEventsPanel(summary: summary),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Column(
                   children: [
                     SizedBox(
                       height: 380,
@@ -508,11 +541,10 @@ class _HistoryDetailPane extends StatelessWidget {
                     ),
                   ],
                 ),
-              );
-            },
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

@@ -397,6 +397,12 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
               label: 'Lịch học phân công:',
               value: selectedClass.scheduleDescription,
             ),
+            const SizedBox(height: 14),
+            _buildInfoRow(
+              icon: Icons.fact_check_outlined,
+              label: 'Thời lượng môn học:',
+              value: '${selectedClass.totalSlots} slots (Cấm thi nếu vắng ≥ ${(selectedClass.totalSlots * 0.20).ceil()} buổi)',
+            ),
           ] else ...[
             const Center(
               child: Text(

@@ -31,6 +31,13 @@ class AppConfig {
       teacherApiKey.isNotEmpty &&
       teacherId.isNotEmpty;
 
+  /// Optional Gemini API key for the Person 5 AI Assistant module.
+  /// Can be supplied via `--dart-define=GEMINI_API_KEY=...` or configured in UI.
+  static const String geminiApiKey =
+      String.fromEnvironment('GEMINI_API_KEY');
+
+  static bool get hasGeminiApiKey => geminiApiKey.isNotEmpty;
+
   // Prevent accidental construction of this class because it only stores constants.
   const AppConfig._();
 }

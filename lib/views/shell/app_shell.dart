@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../attendance/attendance_view.dart';
-import '../ai_assistant/ai_assistant_placeholder_view.dart';
+import '../ai_assistant/ai_assistant_view.dart';
 import '../session/session_selection_view.dart';
 
 class AppShell extends StatefulWidget {
@@ -19,7 +19,7 @@ class _AppShellState extends State<AppShell> {
   final List<Widget> _views = const [
     SessionSelectionView(),
     AttendanceView(),
-    AiAssistantPlaceholderView(),
+    AiAssistantView(),
   ];
 
   final List<String> _titles = const [

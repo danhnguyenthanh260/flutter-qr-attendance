@@ -127,57 +127,82 @@ class _TodayAttendanceViewState extends State<TodayAttendanceView> {
     AttendanceResultsProvider provider,
     AttendanceSummary summary,
   ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SyncStatusBar(provider: provider, summary: summary),
-        const SizedBox(height: 12),
-        if (provider.refreshErrorMessage != null) ...[
-          AttendanceInlineBanner(
-            icon: Icons.cloud_off_rounded,
-            accent: AppColors.error,
-            background: AppColors.errorBg,
-            message:
-                'Lần cập nhật gần nhất thất bại: ${provider.refreshErrorMessage}. '
-                'Bảng đang hiển thị dữ liệu đọc lúc ${_formatTime(provider.lastUpdatedAt)}.',
-            trailing: TextButton(
-              onPressed: provider.refresh,
-              child: const Text('Thử lại'),
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
-        _StatusNoticeBanner(summary: summary),
-        AttendanceSummaryCards(summary: summary),
-        const SizedBox(height: 16),
-        Expanded(child: _buildDataArea(summary)),
-      ],
-    );
-  }
-
-  Widget _buildDataArea(AttendanceSummary summary) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth >= 1180) {
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        final isDesktopWideAndTall =
+            constraints.maxWidth >= 1180 && constraints.maxHeight >= 620;
+
+        final headerChildren = [
+          _SyncStatusBar(provider: provider, summary: summary),
+          const SizedBox(height: 12),
+          if (provider.refreshErrorMessage != null) ...[
+            AttendanceInlineBanner(
+              icon: Icons.cloud_off_rounded,
+              accent: AppColors.error,
+              background: AppColors.errorBg,
+              message:
+                  'Lần cập nhật gần nhất thất bại: ${provider.refreshErrorMessage}. '
+                  'Bảng đang hiển thị dữ liệu đọc lúc ${_formatTime(provider.lastUpdatedAt)}.',
+              trailing: TextButton(
+                onPressed: provider.refresh,
+                child: const Text('Thử lại'),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          _StatusNoticeBanner(summary: summary),
+          AttendanceSummaryCards(summary: summary),
+          const SizedBox(height: 16),
+        ];
+
+        if (isDesktopWideAndTall) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 3, child: AttendanceRosterTable(summary: summary)),
-              const SizedBox(width: 16),
-              SizedBox(width: 380, child: RetryEventsPanel(summary: summary)),
+              ...headerChildren,
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(flex: 3, child: AttendanceRosterTable(summary: summary)),
+                    const SizedBox(width: 16),
+                    SizedBox(width: 380, child: RetryEventsPanel(summary: summary)),
+                  ],
+                ),
+              ),
             ],
           );
         }
 
+        // Khi chiều cao nhỏ hoặc màn hình thu hẹp, cuộn toàn bộ nội dung để không bị tràn pixel
         return SingleChildScrollView(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height: 420,
-                child: AttendanceRosterTable(summary: summary),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(height: 320, child: RetryEventsPanel(summary: summary)),
+              ...headerChildren,
+              if (constraints.maxWidth >= 1180)
+                SizedBox(
+                  height: 520,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(flex: 3, child: AttendanceRosterTable(summary: summary)),
+                      const SizedBox(width: 16),
+                      SizedBox(width: 380, child: RetryEventsPanel(summary: summary)),
+                    ],
+                  ),
+                )
+              else
+                Column(
+                  children: [
+                    SizedBox(
+                      height: 420,
+                      child: AttendanceRosterTable(summary: summary),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(height: 320, child: RetryEventsPanel(summary: summary)),
+                  ],
+                ),
             ],
           ),
         );

@@ -81,6 +81,7 @@ class MockAttendanceService implements AttendanceService {
       room: 'BE-302 (Lab C)',
       totalStudents: 32,
       scheduleDescription: 'Thứ 2 - Thứ 6 (Slot 2)',
+      totalSlots: 20,
     ),
     ClassModel(
       id: 'CLASS_SWP391_SE1702',
@@ -89,6 +90,7 @@ class MockAttendanceService implements AttendanceService {
       room: 'AL-205 (Hội trường)',
       totalStudents: 28,
       scheduleDescription: 'Thứ 4 - Thứ 7 (Slot 3)',
+      totalSlots: 30,
     ),
     ClassModel(
       id: 'CLASS_CSD201_IA1701',
@@ -97,6 +99,7 @@ class MockAttendanceService implements AttendanceService {
       room: 'DE-101 (Phòng lý thuyết)',
       totalStudents: 35,
       scheduleDescription: 'Thứ 3 - Thứ 5 (Slot 1)',
+      totalSlots: 20,
     ),
   ];
 
