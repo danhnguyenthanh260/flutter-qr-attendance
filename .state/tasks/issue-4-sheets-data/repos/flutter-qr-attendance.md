@@ -10,3 +10,11 @@
 - Verification: Windows Git clone; isolated Windows Flutter 3.47.4/Dart 3.13.3; Desktop development with C++ installed in Visual Studio Community 2022; Apps Script syntax checks and deterministic fake-store tests; full Flutter test suite; Flutter static analysis; whitespace check and secret-pattern scan passed; Release `flutter_qr_attendance.exe` launched and stayed responsive. The project is not configured for web, so no web runtime claim is made.
 - Next repo step: Feature branch is pushed and its locally built Windows app is running for user UI testing. Do not open a PR or merge without explicit direction.
 - Blockers: No Google Apps Script deployment endpoint, Spreadsheet ID, or teacher authentication configuration. Do not make a deployed readiness claim.
+
+## 2026-09-23 performance checkpoint
+
+- Working clone: `D:\Coding_learning\flutter-qr-attendance-qr-grants`, branch `main`.
+- Integrated remote main through `f297f0c`, then pushed `20ec060 perf(attendance): reduce Apps Script load waits`.
+- Change: coalesce/cache class reads for five minutes; load slots and active-session recovery in parallel; render a known active session's results before non-critical session-selector loading.
+- Evidence: `flutter analyze` clean; full `flutter test` passed 88 tests. A read-only latency probe found Apps Script cold start around 13.9 seconds and warm requests around 2.6-3.4 seconds before Sheet reads, so the remaining initial delay is an Apps Script runtime limitation rather than Flutter layout work.
+- Runtime: source is pushed; a new configured release requires the local teacher build defines, which are not stored in the repository.
