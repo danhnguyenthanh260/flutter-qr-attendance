@@ -97,19 +97,16 @@ class _AppShellState extends State<AppShell> {
                   index: 0,
                   icon: Icons.qr_code_2_rounded,
                   label: 'Phiên điểm danh',
-                  badgeText: 'Người 1',
                 ),
                 _buildNavItem(
                   index: 1,
                   icon: Icons.fact_check_outlined,
                   label: 'Bảng điểm danh',
-                  badgeText: 'Người 2',
                 ),
                 _buildNavItem(
                   index: 2,
-                  icon: Icons.auto_awesome_rounded,
-                  label: 'Trợ lý AI & Báo cáo',
-                  badgeText: 'Người 5',
+                  icon: Icons.insights_outlined,
+                  label: 'Trợ lý học vụ & Báo cáo',
                 ),
 
                 const Spacer(),
@@ -273,7 +270,7 @@ class _AppShellState extends State<AppShell> {
     required int index,
     required IconData icon,
     required String label,
-    required String badgeText,
+    String? badgeText,
   }) {
     final isSelected = _selectedIndex == index;
 
@@ -308,23 +305,24 @@ class _AppShellState extends State<AppShell> {
                     ),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? Colors.white.withValues(alpha: 0.2)
-                        : const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    badgeText,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : AppColors.textMuted,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
+                if (badgeText != null && badgeText.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : const Color(0xFF1E293B),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badgeText,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : AppColors.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),

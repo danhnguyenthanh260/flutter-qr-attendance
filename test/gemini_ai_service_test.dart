@@ -190,6 +190,47 @@ Tổng sĩ số lớp: 2 sinh viên
       expect(answer, 'Hôm nay có 1 sinh viên vắng mặt là Trần Thị B.');
     });
 
+    test('tự động failover sang key thứ hai khi key đầu tiên bị 429 Rate Limit', () async {
+      final keysCalled = <String>[];
+      final mockClient = MockClient((request) async {
+        final key = request.url.queryParameters['key']!;
+        keysCalled.add(key);
+
+        if (key == 'KEY_1') {
+          // Key 1 bị 429 Rate Limit
+          return http.Response('{"error": "Resource has been exhausted"}', 429);
+        }
+
+        // Key 2 thành công
+        final responseBody = {
+          'candidates': [
+            {
+              'content': {
+                'parts': [
+                  {'text': 'Phản hồi thành công từ Key 2!'}
+                ]
+              }
+            }
+          ]
+        };
+        return http.Response.bytes(
+          utf8.encode(jsonEncode(responseBody)),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      });
+
+      final service = GeminiRestService(client: mockClient);
+      final answer = await service.askAi(
+        prompt: 'Ai vắng?',
+        context: 'Ngữ cảnh điểm danh',
+        apiKeys: ['KEY_1', 'KEY_2'],
+      );
+
+      expect(keysCalled, ['KEY_1', 'KEY_2']);
+      expect(answer, 'Phản hồi thành công từ Key 2!');
+    });
+
     test('fallback sang Local Engine khi không có API key', () async {
       final service = GeminiRestService();
       final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);

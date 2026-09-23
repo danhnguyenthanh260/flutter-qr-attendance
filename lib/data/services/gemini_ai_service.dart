@@ -6,12 +6,14 @@ import '../models/attendance_summary.dart';
 import '../models/class_model.dart';
 import '../models/session_day_group.dart';
 import '../models/student_absence_warning.dart';
+import 'gemini_key_rotator.dart';
 
 abstract class AttendanceAiService {
   Future<String> askAi({
     required String prompt,
     required String context,
     String? apiKey,
+    List<String>? apiKeys,
   });
 
   Future<String> generateReport({
@@ -19,6 +21,7 @@ abstract class AttendanceAiService {
     List<SessionDayGroup>? history,
     ClassModel? classModel,
     String? apiKey,
+    List<String>? apiKeys,
   });
 }
 
@@ -133,20 +136,31 @@ class AttendancePromptBuilder {
 
 class GeminiRestService implements AttendanceAiService {
   final http.Client _client;
+  final GeminiKeyRotator _rotator;
   static const String _geminiModel = 'gemini-1.5-flash';
   static const String _apiBaseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent';
 
-  GeminiRestService({http.Client? client}) : _client = client ?? http.Client();
+  GeminiRestService({http.Client? client, GeminiKeyRotator? rotator})
+      : _client = client ?? http.Client(),
+        _rotator = rotator ?? GeminiKeyRotator();
+
+  GeminiKeyRotator get rotator => _rotator;
 
   @override
   Future<String> askAi({
     required String prompt,
     required String context,
     String? apiKey,
+    List<String>? apiKeys,
   }) async {
-    final key = apiKey?.trim() ?? '';
-    if (key.isEmpty) {
+    if (apiKeys != null && apiKeys.isNotEmpty) {
+      _rotator.setKeys(apiKeys);
+    } else if (apiKey != null && apiKey.trim().isNotEmpty) {
+      _rotator.setKeys([apiKey.trim()]);
+    }
+
+    if (!_rotator.hasKeys) {
       // Fallback sang Local Analytical Engine nếu chưa có key
       return LocalAttendanceAiService().askAi(
         prompt: prompt,
@@ -154,7 +168,6 @@ class GeminiRestService implements AttendanceAiService {
       );
     }
 
-    final uri = Uri.parse('$_apiBaseUrl?key=$key');
     final systemInstruction =
         'Bạn là Trợ lý AI phân tích điểm danh chuyên nghiệp cho giảng viên trong hệ thống QR Attendance trường FPT University. '
         'Hãy trả lời ngắn gọn, chính xác, súc tích, văn phong sư phạm và hữu ích bằng Tiếng Việt. '
@@ -187,41 +200,62 @@ class GeminiRestService implements AttendanceAiService {
       }
     };
 
-    try {
-      final response = await _client
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 15));
+    final totalKeys = _rotator.keyCount;
+    String? lastError;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        final candidates = data['candidates'] as List?;
-        if (candidates != null && candidates.isNotEmpty) {
-          final content = candidates[0]['content'] as Map<String, dynamic>?;
-          final parts = content?['parts'] as List?;
-          if (parts != null && parts.isNotEmpty) {
-            return parts[0]['text'] as String? ?? 'Không nhận được phản hồi từ AI.';
+    // Vòng lặp xoay vòng và tự động failover sang key tiếp theo nếu gặp lỗi
+    for (var attempt = 0; attempt < totalKeys; attempt++) {
+      final key = _rotator.getNextKey();
+      if (key == null || key.isEmpty) break;
+
+      final uri = Uri.parse('$_apiBaseUrl?key=$key');
+
+      try {
+        final response = await _client
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json; charset=utf-8'},
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+          final candidates = data['candidates'] as List?;
+          if (candidates != null && candidates.isNotEmpty) {
+            final content = candidates[0]['content'] as Map<String, dynamic>?;
+            final parts = content?['parts'] as List?;
+            if (parts != null && parts.isNotEmpty) {
+              return parts[0]['text'] as String? ?? 'Không nhận được phản hồi từ AI.';
+            }
           }
+          return 'Không thể phân tích phản hồi từ Gemini API.';
+        } else if (response.statusCode == 429) {
+          // Quota / Rate limit error -> tự động chuyển sang key kế tiếp
+          _rotator.rotateOnFailure(key);
+          lastError = 'Key ${GeminiKeyRotator.maskKey(key)} đã chạm ngưỡng Rate Limit (429).';
+          continue;
+        } else if (response.statusCode == 400 || response.statusCode == 403) {
+          // Key không hợp lệ hoặc bị từ chối
+          _rotator.rotateOnFailure(key);
+          lastError = 'Key ${GeminiKeyRotator.maskKey(key)} không hợp lệ hoặc bị từ chối (${response.statusCode}).';
+          continue;
+        } else {
+          lastError = 'Gemini API trả về mã lỗi: ${response.statusCode}. Chi tiết: ${response.body}';
+          continue;
         }
-        return 'Không thể phân tích phản hồi từ Gemini API.';
-      } else {
-        final errorBody = response.body;
-        if (response.statusCode == 400 || response.statusCode == 403) {
-          return '⚠️ Gemini API Key không hợp lệ hoặc không có quyền truy cập. Bạn có thể kiểm tra lại API Key hoặc hệ thống sẽ tự động dùng bộ máy nội suy cục bộ.';
-        }
-        return '⚠️ Gemini API trả về mã lỗi: ${response.statusCode}. Chi tiết: $errorBody';
+      } catch (e) {
+        lastError = 'Lỗi kết nối khi gọi Key ${GeminiKeyRotator.maskKey(key)}: $e';
+        continue;
       }
-    } catch (e) {
-      // Khi gặp sự cố mạng, fallback sang Local Engine để không gián đoạn người dùng
-      final fallbackResponse = await LocalAttendanceAiService().askAi(
-        prompt: prompt,
-        context: context,
-      );
-      return '$fallbackResponse\n\n*(Lưu ý: Đã chuyển sang phân tích nội suy cục bộ do kết nối mạng tới Gemini API bị gián đoạn: $e)*';
     }
+
+    // Khi tất cả keys đều thất bại, fallback sang Local Engine để không gián đoạn
+    final fallbackResponse = await LocalAttendanceAiService().askAi(
+      prompt: prompt,
+      context: context,
+    );
+    return '$fallbackResponse\n\n*(Lưu ý: Tất cả $totalKeys Gemini API Key đều không khả dụng ($lastError). Hệ thống đã tự động chuyển sang phân tích nội suy cục bộ)*';
   }
 
   @override
@@ -230,9 +264,13 @@ class GeminiRestService implements AttendanceAiService {
     List<SessionDayGroup>? history,
     ClassModel? classModel,
     String? apiKey,
+    List<String>? apiKeys,
   }) async {
-    final key = apiKey?.trim() ?? '';
-    if (key.isEmpty) {
+    final candidateKeys = (apiKeys != null && apiKeys.isNotEmpty)
+        ? apiKeys
+        : (apiKey != null && apiKey.trim().isNotEmpty ? [apiKey.trim()] : _rotator.keys);
+
+    if (candidateKeys.isEmpty) {
       return LocalAttendanceAiService().generateReport(
         summary: summary,
         history: history,
@@ -256,7 +294,7 @@ class GeminiRestService implements AttendanceAiService {
         '6. Cảnh báo các bất thường hoặc gian lận nộp trùng (nếu có).\n'
         '7. Đề xuất/Khuyến nghị cho giảng viên buổi học tiếp theo.';
 
-    return askAi(prompt: prompt, context: context, apiKey: key);
+    return askAi(prompt: prompt, context: context, apiKeys: candidateKeys);
   }
 }
 
@@ -266,6 +304,7 @@ class LocalAttendanceAiService implements AttendanceAiService {
     required String prompt,
     required String context,
     String? apiKey,
+    List<String>? apiKeys,
   }) async {
     await Future.delayed(const Duration(milliseconds: 300));
     final lowerPrompt = prompt.toLowerCase();
@@ -405,12 +444,12 @@ class LocalAttendanceAiService implements AttendanceAiService {
           'Bạn có thể bấm nút **"Tạo báo cáo chuyên cần"** ở thanh công cụ phía trên để xem văn bản báo cáo chi tiết đầy đủ.';
     }
 
-    return '🤖 **Trợ lý AI Điểm danh:**\n\n'
-        'Tôi đã tiếp nhận câu hỏi của bạn. Dựa trên dữ liệu ca học hiện tại:\n'
-        '• Để kiểm tra cấm thi, bạn hãy hỏi: *"Ai vắng gần 20% và ai bị cấm thi?"*\n'
-        '• Để xem ai vắng hôm nay, bạn hãy hỏi: *"Những bạn nào đang vắng?"*\n'
-        '• Để xem tỷ lệ, bạn hãy hỏi: *"Tỷ lệ chuyên cần hôm nay thế nào?"*\n'
-        '• Để kiểm tra gian lận, hãy hỏi: *"Có ai nộp trùng không?"*';
+    return '**Trợ lý Chuyên cần & Học vụ:**\n\n'
+        'Hệ thống đã tiếp nhận câu hỏi. Dựa trên dữ liệu ca học hiện tại:\n'
+        '• Kiểm tra nguy cơ cấm thi: *"Sinh viên nào vắng gần 20% hoặc bị cấm thi?"*\n'
+        '• Tra cứu điểm danh hôm nay: *"Ai chưa điểm danh trong buổi học này?"*\n'
+        '• Thống kê tỷ lệ chuyên cần: *"Tỷ lệ chuyên cần hôm nay thế nào?"*\n'
+        '• Kiểm tra gian lận: *"Có lượt nộp trùng lặp nào không?"*';
   }
 
   @override
@@ -419,6 +458,7 @@ class LocalAttendanceAiService implements AttendanceAiService {
     List<SessionDayGroup>? history,
     ClassModel? classModel,
     String? apiKey,
+    List<String>? apiKeys,
   }) async {
     await Future.delayed(const Duration(milliseconds: 400));
     final scope = summary.scope;

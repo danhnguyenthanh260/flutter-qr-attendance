@@ -61,13 +61,18 @@ class ChatMessageBubble extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: message.isReport
-                    ? const Color(0xFFF59E0B) // Amber for report
-                    : const Color(0xFF8B5CF6), // Purple for AI
+                    ? const Color(0xFFFEF3C7)
+                    : AppColors.primaryLight,
                 shape: BoxShape.circle,
+                border: Border.all(
+                  color: message.isReport
+                      ? const Color(0xFFFDE68A)
+                      : AppColors.primary.withValues(alpha: 0.2),
+                ),
               ),
               child: Icon(
-                message.isReport ? Icons.analytics_outlined : Icons.smart_toy_outlined,
-                color: Colors.white,
+                message.isReport ? Icons.description_outlined : Icons.support_agent_rounded,
+                color: message.isReport ? const Color(0xFFD97706) : AppColors.primary,
                 size: 20,
               ),
             ),
@@ -109,13 +114,13 @@ class ChatMessageBubble extends StatelessWidget {
                     Row(
                       children: [
                         const Icon(
-                          Icons.verified_outlined,
+                          Icons.article_outlined,
                           size: 16,
                           color: Color(0xFFD97706),
                         ),
                         const SizedBox(width: 6),
                         const Text(
-                          'Báo cáo tự động chuyên cần',
+                          'Báo cáo tổng hợp chuyên cần',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -206,13 +211,14 @@ class ChatMessageBubble extends StatelessWidget {
             Container(
               width: 36,
               height: 36,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
                 shape: BoxShape.circle,
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
               ),
               child: const Icon(
-                Icons.person,
-                color: Colors.white,
+                Icons.person_outline_rounded,
+                color: AppColors.primary,
                 size: 20,
               ),
             ),

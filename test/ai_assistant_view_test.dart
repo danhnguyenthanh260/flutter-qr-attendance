@@ -43,10 +43,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Trợ lý Chuyên cần AI'), findsOneWidget);
+    expect(find.text('Trợ lý Chuyên cần'), findsOneWidget);
     expect(find.text('Tạo báo cáo chuyên cần'), findsOneWidget);
     expect(find.text('Cấu hình API'), findsOneWidget);
-    expect(find.text('👥 Ai đang vắng hoặc chưa điểm danh?'), findsOneWidget);
+    expect(find.text('Sinh viên vắng gần 20% & nguy cơ cấm thi'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
   });
 
@@ -78,11 +78,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final chipFinder = find.text('👥 Ai đang vắng hoặc chưa điểm danh?');
+    final chipFinder = find.text('Sinh viên vắng gần 20% & nguy cơ cấm thi');
     await tester.tap(chipFinder);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.text('👥 Ai đang vắng hoặc chưa điểm danh?'), findsWidgets);
+    expect(find.text('Sinh viên vắng gần 20% & nguy cơ cấm thi'), findsWidgets);
   });
 }

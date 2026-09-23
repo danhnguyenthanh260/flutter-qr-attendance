@@ -6,10 +6,11 @@ import '../data/models/attendance_summary.dart';
 import '../data/models/class_model.dart';
 import '../data/models/session_day_group.dart';
 import '../data/services/gemini_ai_service.dart';
+import '../data/services/gemini_key_rotator.dart';
 
 class AiAssistantProvider extends ChangeNotifier {
   final AttendanceAiService _aiService;
-  String _apiKey;
+  final GeminiKeyRotator _rotator;
   final List<ChatMessage> _messages = [];
   bool _isGenerating = false;
   String? _lastGeneratedReport;
@@ -17,22 +18,27 @@ class AiAssistantProvider extends ChangeNotifier {
   AiAssistantProvider({
     AttendanceAiService? aiService,
     String? initialApiKey,
+    List<String>? initialApiKeys,
   })  : _aiService = aiService ?? GeminiRestService(),
-        _apiKey = initialApiKey ?? AppConfig.geminiApiKey {
+        _rotator = GeminiKeyRotator(
+          initialApiKeys ??
+              (initialApiKey != null && initialApiKey.isNotEmpty
+                  ? [initialApiKey]
+                  : AppConfig.initialGeminiApiKeys),
+        ) {
     // Thêm tin nhắn chào mừng ban đầu
     _messages.add(
       ChatMessage(
         id: 'msg_welcome',
         sender: MessageSender.ai,
         content:
-            'Xin chào! Tôi là **Trợ lý AI Điểm danh** 🤖\n\n'
-            'Tôi có thể giúp bạn:\n'
-            '• Cảnh báo học vụ: Danh sách sinh viên vắng gần 20% & sinh viên BỊ CẤM THI.\n'
-            '• Tra cứu nhanh danh sách sinh viên vắng mặt hoặc chưa quét mã hôm nay.\n'
-            '• Đánh giá tỷ lệ chuyên cần của lớp học theo thời gian thực.\n'
-            '• Phát hiện các dấu hiệu nộp trùng lặp hoặc nghi vấn gian lận.\n'
-            '• Tự động tạo Báo cáo Tổng quan chuyên cần chỉ với 1 cú nhấp chuột.\n\n'
-            'Bạn có thể bấm vào các gợi ý bên dưới hoặc gõ câu hỏi để bắt đầu!',
+            'Xin chào Thầy/Cô. Tôi là Trợ lý Chuyên cần & Học vụ.\n\n'
+            'Hệ thống hỗ trợ Giảng viên các nghiệp vụ chính:\n'
+            '• Cảnh báo học vụ: Danh sách sinh viên vắng tiệm cận 20% và sinh viên bị cấm thi theo môn.\n'
+            '• Điểm danh thời gian thực: Tra cứu sinh viên vắng mặt hoặc chưa quét mã trong ca học.\n'
+            '• Đánh giá chuyên cần: Thống kê tỷ lệ đi học và phát hiện các lượt quét mã trùng lặp.\n'
+            '• Xuất báo cáo: Tổng hợp và tạo văn bản báo cáo chuyên cần chi tiết theo từng lớp.\n\n'
+            'Thầy/Cô có thể chọn các tác vụ mẫu bên dưới hoặc nhập câu hỏi trực tiếp.',
         timestamp: DateTime.now(),
       ),
     );
@@ -40,12 +46,54 @@ class AiAssistantProvider extends ChangeNotifier {
 
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   bool get isGenerating => _isGenerating;
-  String get apiKey => _apiKey;
-  bool get hasApiKey => _apiKey.trim().isNotEmpty;
+  List<String> get apiKeys => _rotator.keys;
+  String get apiKey => _rotator.hasKeys ? _rotator.keys.first : '';
+  bool get hasApiKey => _rotator.hasKeys;
+  int get keyCount => _rotator.keyCount;
+  GeminiKeyRotator get rotator => _rotator;
   String? get lastGeneratedReport => _lastGeneratedReport;
 
+  String get activeKeyStatus {
+    if (!_rotator.hasKeys) return 'Local Engine';
+    if (_rotator.keyCount == 1) return 'Gemini Online';
+    return 'Gemini Rotating (${_rotator.keyCount} Keys)';
+  }
+
   void setApiKey(String key) {
-    _apiKey = key.trim();
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      _rotator.clear();
+    } else {
+      _rotator.setKeys([trimmed]);
+    }
+    notifyListeners();
+  }
+
+  void setApiKeys(List<String> keys) {
+    _rotator.setKeys(keys);
+    notifyListeners();
+  }
+
+  bool addApiKey(String key) {
+    final added = _rotator.addKey(key);
+    if (added) notifyListeners();
+    return added;
+  }
+
+  int addApiKeysFromText(String text) {
+    final count = _rotator.addKeysFromText(text);
+    if (count > 0) notifyListeners();
+    return count;
+  }
+
+  bool removeApiKeyAt(int index) {
+    final removed = _rotator.removeKeyAt(index);
+    if (removed) notifyListeners();
+    return removed;
+  }
+
+  void clearApiKeys() {
+    _rotator.clear();
     notifyListeners();
   }
 
@@ -103,7 +151,7 @@ class AiAssistantProvider extends ChangeNotifier {
       final responseText = await _aiService.askAi(
         prompt: text,
         context: context,
-        apiKey: _apiKey,
+        apiKeys: _rotator.keys,
       );
 
       // Thay thế loading message bằng câu trả lời thật
@@ -149,7 +197,7 @@ class AiAssistantProvider extends ChangeNotifier {
         summary: summary,
         history: history,
         classModel: classModel,
-        apiKey: _apiKey,
+        apiKeys: _rotator.keys,
       );
       _lastGeneratedReport = report;
 

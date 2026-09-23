@@ -14,6 +14,7 @@ class MockAiService implements AttendanceAiService {
     required String prompt,
     required String context,
     String? apiKey,
+    List<String>? apiKeys,
   }) async {
     return 'Phản hồi giả lập cho: $prompt';
   }
@@ -24,6 +25,7 @@ class MockAiService implements AttendanceAiService {
     dynamic history,
     dynamic classModel,
     String? apiKey,
+    List<String>? apiKeys,
   }) async {
     return 'Báo cáo giả lập cho ${summary.scope.className}';
   }
@@ -99,5 +101,27 @@ void main() {
     provider.clearMessages();
     expect(provider.messages.length, 1);
     expect(provider.messages.first.sender, MessageSender.system);
+  });
+
+  test('quản lý xoay vòng đa key và cập nhật activeKeyStatus', () {
+    final multiKeyProvider = AiAssistantProvider(
+      aiService: MockAiService(),
+      initialApiKeys: ['KEY_1', 'KEY_2'],
+    );
+
+    expect(multiKeyProvider.keyCount, 2);
+    expect(multiKeyProvider.activeKeyStatus, 'Gemini Rotating (2 Keys)');
+
+    multiKeyProvider.addApiKey('KEY_3');
+    expect(multiKeyProvider.keyCount, 3);
+    expect(multiKeyProvider.activeKeyStatus, 'Gemini Rotating (3 Keys)');
+
+    multiKeyProvider.removeApiKeyAt(0);
+    expect(multiKeyProvider.keyCount, 2);
+
+    multiKeyProvider.clearApiKeys();
+    expect(multiKeyProvider.keyCount, 0);
+    expect(multiKeyProvider.hasApiKey, isFalse);
+    expect(multiKeyProvider.activeKeyStatus, 'Local Engine');
   });
 }

@@ -21,12 +21,12 @@ class _AiAssistantViewState extends State<AiAssistantView> {
   final ScrollController _scrollController = ScrollController();
 
   final List<String> _suggestedPrompts = const [
-    '⚠️ Ai vắng gần 20% & nguy cơ cấm thi?',
-    '🚫 Danh sách sinh viên bị cấm thi (>20% slot)',
-    '👥 Ai đang vắng hoặc chưa điểm danh?',
-    '📊 Tỷ lệ chuyên cần của lớp hôm nay?',
-    '🛡️ Có trường hợp nào nộp trùng lặp đáng ngờ không?',
-    '📝 Tóm tắt nhanh tình hình buổi học',
+    'Sinh viên vắng gần 20% & nguy cơ cấm thi',
+    'Danh sách sinh viên bị cấm thi (>20% slot)',
+    'Sinh viên vắng hoặc chưa quét mã hôm nay',
+    'Tỷ lệ chuyên cần lớp học',
+    'Kiểm tra lượt quét trùng lặp',
+    'Tóm tắt tình hình buổi học',
   ];
 
   @override
@@ -129,12 +129,12 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF3E8FF),
+                    color: AppColors.primaryLight,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Color(0xFF9333EA),
+                    Icons.insights_outlined,
+                    color: AppColors.primary,
                     size: 20,
                   ),
                 ),
@@ -144,13 +144,17 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Text(
-                            'Trợ lý Chuyên cần AI',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF0F172A),
+                          const Flexible(
+                            child: Text(
+                              'Trợ lý Chuyên cần',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -163,7 +167,7 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              aiProvider.hasApiKey ? 'Gemini Online' : 'Local Engine',
+                              aiProvider.activeKeyStatus,
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
@@ -192,22 +196,30 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                 // Action Buttons
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF9333EA),
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   ),
                   onPressed: aiProvider.isGenerating ? null : _handleGenerateReport,
-                  icon: const Icon(Icons.analytics_outlined, size: 18),
+                  icon: const Icon(Icons.description_outlined, size: 18),
                   label: const Text('Tạo báo cáo chuyên cần'),
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textSecondary,
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   ),
                   onPressed: () => AiSettingsDialog.show(context),
-                  icon: const Icon(Icons.key_rounded, size: 16),
+                  icon: const Icon(Icons.tune_outlined, size: 16),
                   label: const Text('Cấu hình API'),
                 ),
                 const SizedBox(width: 6),
@@ -240,8 +252,8 @@ class _AiAssistantViewState extends State<AiAssistantView> {
 
           // 3. Suggested Prompt Chips Bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            color: Colors.white.withValues(alpha: 0.7),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            color: Colors.white,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -249,12 +261,20 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: ActionChip(
-                      backgroundColor: Colors.white,
+                      backgroundColor: const Color(0xFFF8FAFC),
                       surfaceTintColor: Colors.transparent,
-                      side: const BorderSide(color: AppColors.border),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: const BorderSide(color: AppColors.border),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       label: Text(
                         prompt,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF334155),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       onPressed: aiProvider.isGenerating
                           ? null
@@ -281,11 +301,11 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                     minLines: 1,
                     maxLines: 4,
                     decoration: InputDecoration(
-                      hintText: 'Hỏi Trợ lý AI về tình hình điểm danh của lớp...',
+                      hintText: 'Nhập câu hỏi tra cứu chuyên cần, sinh viên vắng, nguy cơ cấm thi...',
                       hintStyle: const TextStyle(fontSize: 13, color: AppColors.textMuted),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: const BorderSide(color: AppColors.border),
@@ -296,7 +316,7 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: const BorderSide(color: Color(0xFF9333EA)),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
                       ),
                     ),
                     onSubmitted: (value) => _handleSend(value),
@@ -305,7 +325,7 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                 const SizedBox(width: 12),
                 Container(
                   decoration: const BoxDecoration(
-                    color: Color(0xFF9333EA),
+                    color: AppColors.primary,
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
@@ -318,7 +338,7 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                        : const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
                     onPressed: aiProvider.isGenerating
                         ? null
                         : () => _handleSend(_inputController.text),
