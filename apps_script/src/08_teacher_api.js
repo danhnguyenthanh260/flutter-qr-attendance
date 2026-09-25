@@ -49,7 +49,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
           return Domain.success(StudentService.issueQrTicket(
             service,
             context.studentConfig,
-            Domain.requireString(payload.session_id, 'session_id')
+            Domain.requireString(payload.session_id, 'session_id'),
+            payload.request_id
           ));
         default:
           Domain.fail('unknown_action', 'Unsupported POST action.', { action: action });
@@ -87,6 +88,7 @@ function createTeacherApiResponseFromEvent_(method, event) {
 
 function createTeacherApiResponse_(method, payload) {
   var envelope;
+  var started = Date.now();
   try {
     var context = AttendanceConfig.createLiveContext();
     if (payload.action === 'issue_qr') {
@@ -96,6 +98,8 @@ function createTeacherApiResponse_(method, payload) {
   } catch (error) {
     envelope = AttendanceDomain.errorEnvelope(error);
   }
+  console.info(JSON.stringify({event: 'teacher_api_complete', action: String(payload.action).slice(0, 40),
+    ms: Date.now() - started, ok: envelope.ok}));
   return createTeacherApiOutput_(envelope);
 }
 

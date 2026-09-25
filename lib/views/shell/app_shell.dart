@@ -146,7 +146,7 @@ class _AppShellState extends State<AppShell> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'QR Attendance · 1.1.0',
+                              'QR Attendance · 1.1.1',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,

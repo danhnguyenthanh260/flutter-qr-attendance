@@ -380,21 +380,38 @@ var AttendanceRepository = (function (Domain) {
         field: 'valid_seconds',
       });
     }
-    var tickets = this._records(Domain.SHEETS.ticketStates).filter(function (record) {
+    var requestId = Domain.optionalString(input.request_id);
+    if (requestId && !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) {
+      Domain.fail('validation_error', 'Invalid QR request_id.', null);
+    }
+    var allTickets = this._records(Domain.SHEETS.ticketStates);
+    var ticketId = requestId ? 'TKT_REQ_' + requestId : this._idFactory('TKT');
+    var previous = allTickets.find(function (record) { return record.ticket_id === ticketId; });
+    if (previous) {
+      if (previous.session_id !== sessionId) {
+        Domain.fail('request_conflict', 'QR request_id belongs to another session.', null);
+      }
+      // Replays never extend expiry, even if the first response was lost.
+      return this._toTicket(previous);
+    }
+    var tickets = allTickets.filter(function (record) {
       return record.session_id === sessionId;
     });
     var generation = tickets.reduce(function (current, record) {
       return Math.max(current, Number(record.generation) || 0);
     }, 0) + 1;
     var issuedAt = this._clock();
-    var ticket = this.saveTicketState({
-      ticket_id: this._idFactory('TKT'),
+    var ticket = {
+      ticket_id: ticketId,
       session_id: sessionId,
       generation: generation,
       issued_at: issuedAt.toISOString(),
       expires_at: new Date(issuedAt.getTime() + validSeconds * 1000).toISOString(),
       status: 'active',
-    });
+      updated_at: issuedAt.toISOString(),
+    };
+    // Already scanned under the service lock; do not scan TicketStates twice.
+    this._gateway.append(Domain.SHEETS.ticketStates, ticket);
     return this._toTicket(ticket);
   };
 

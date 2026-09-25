@@ -120,6 +120,22 @@ function createFixture() {
   };
 }
 
+test('QR retry returns one persisted ticket without extending expiration', () => {
+  const {service, gateway, setNow} = createFixture();
+  const session = service.startSession(startInput());
+  const input = {session_id: session.id, valid_seconds: 30, request_id: 'retry_same_request_123456'};
+  const first = service.issueQrTicket(input);
+  setNow('2026-09-19T08:00:31.000Z');
+  const replay = service.issueQrTicket(input);
+  assert.deepEqual(replay, first);
+  assert.equal(gateway.rows(Domain.SHEETS.ticketStates).length, 1);
+  assert.throws(() => service.claimQrTicket({ticket_id: replay.ticket_id, grace_seconds: 120}), {code: 'ticket_expired'});
+  const next = service.issueQrTicket({...input, request_id: 'different_request_123456'});
+  assert.equal(next.generation, 2);
+  service.requestCloseSession(session.id);
+  assert.throws(() => service.issueQrTicket(input), {code: 'session_not_active'});
+});
+
 function startInput(overrides = {}) {
   return {
     class_id: 'CLASS_1',

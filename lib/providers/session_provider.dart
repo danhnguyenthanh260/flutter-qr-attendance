@@ -45,6 +45,7 @@ class SessionProvider extends ChangeNotifier {
   bool _isOffline = false;
   bool _ticketRequestPending = false;
   int _qrEpoch = 0;
+  int _qrRetrySeconds = 0;
 
   // Getters
   List<ClassModel> get classes => _classes;
@@ -66,7 +67,8 @@ class SessionProvider extends ChangeNotifier {
   bool get hasActiveSession =>
       _activeSession != null && _activeSession!.status == SessionStatus.active;
 
-  QrTicketModel? get currentTicket => _currentTicket;
+  QrTicketModel? get currentTicket =>
+      _currentTicket?.remainingSeconds == 0 ? null : _currentTicket;
   int get countdownSeconds => _countdownSeconds;
   bool get isRotatingQr => _isRotatingQr;
   bool get isOffline => _isOffline;
@@ -236,12 +238,15 @@ class SessionProvider extends ChangeNotifier {
     if (epoch != _qrEpoch || !hasActiveSession || _isDisposed) return;
 
     _qrTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_isOffline) return;
-
-      if (_countdownSeconds > 0) {
-        _countdownSeconds--;
-        notifyListeners();
-      } else {
+      _countdownSeconds = _currentTicket?.remainingSeconds ?? 0;
+      if (_countdownSeconds == 0) _currentTicket = null;
+      notifyListeners();
+      if (_qrRetrySeconds > 0) {
+        _qrRetrySeconds--;
+        return;
+      }
+      // Prefetch while the current ticket is still valid; never overlap calls.
+      if (_isOffline || _countdownSeconds <= 8) {
         await _fetchNewTicket();
       }
     });
@@ -255,9 +260,16 @@ class SessionProvider extends ChangeNotifier {
     try {
       final ticket = await _service.getNextQrTicket(sessionId);
       if (epoch != _qrEpoch || _isDisposed) return;
+      if (ticket.remainingSeconds == 0) {
+        throw const AttendanceApiException(
+          code: 'ticket_expired',
+          message: 'Mã QR đã hết hạn. Đang lấy mã mới.',
+        );
+      }
       _currentTicket = ticket;
       _countdownSeconds = ticket.remainingSeconds;
       _isOffline = false;
+      _qrRetrySeconds = 0;
       _errorMessage = null;
       notifyListeners();
     } catch (e) {
@@ -273,7 +285,12 @@ class SessionProvider extends ChangeNotifier {
         return;
       }
       _isOffline = true;
-      _errorMessage = 'Không thể làm mới mã QR: $e';
+      _currentTicket = null;
+      _countdownSeconds = 0;
+      _qrRetrySeconds = 5;
+      _errorMessage = e is AttendanceApiException
+          ? 'Chưa nhận được mã QR mới. ${e.message} App sẽ tự thử kết nối lại.'
+          : 'Không kết nối được máy chủ cấp QR. App sẽ tự thử kết nối lại.';
       notifyListeners();
     } finally {
       _ticketRequestPending = false;

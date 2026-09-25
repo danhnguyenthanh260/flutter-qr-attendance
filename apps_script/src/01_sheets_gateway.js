@@ -79,6 +79,7 @@ var GoogleSheetsGateway = (function () {
 
   Gateway.prototype.withLock = function (callback) {
     var lock = LockService.getScriptLock();
+    var started = Date.now();
     try {
       lock.waitLock(10000);
     } catch (error) {
@@ -88,7 +89,13 @@ var GoogleSheetsGateway = (function () {
     try {
       return callback();
     } finally {
-      lock.releaseLock();
+      // Persist buffered writes before another execution can replay a request.
+      try {
+        SpreadsheetApp.flush();
+      } finally {
+        lock.releaseLock();
+        console.info(JSON.stringify({event: 'sheet_lock_complete', ms: Date.now() - started}));
+      }
     }
   };
 

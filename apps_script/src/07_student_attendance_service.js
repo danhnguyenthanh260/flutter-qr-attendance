@@ -1,10 +1,11 @@
 var StudentAttendanceService = (function (Domain) {
   'use strict';
 
-  function issueQrTicket(service, config, sessionId) {
+  function issueQrTicket(service, config, sessionId, requestId) {
     var ticket = service.issueQrTicket({
       session_id: Domain.requireString(sessionId, 'session_id'),
       valid_seconds: config.qrValidSeconds,
+      request_id: requestId,
     });
     return {
       ticket_code: ticket.ticket_id,
@@ -13,6 +14,7 @@ var StudentAttendanceService = (function (Domain) {
       valid_seconds: config.qrValidSeconds,
       created_at: ticket.issued_at,
       expires_at: ticket.expires_at,
+      server_time: new Date().toISOString(),
     };
   }
 

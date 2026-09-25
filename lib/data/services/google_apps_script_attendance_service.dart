@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -100,6 +101,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   final Map<String, ({DateTime saved, List<SessionSlot> items})> _slotsCache =
       {};
   final Map<String, String> _pendingStartRequestIds = {};
+  final Map<String, String> _pendingQrRequestIds = {};
   final Map<String, Future<dynamic>> _readsInFlight = {};
   List<ClassModel>? _classesCache;
   DateTime? _classesCachedAt;
@@ -264,8 +266,31 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   @override
   Future<QrTicketModel> getNextQrTicket(String sessionId) async {
-    final data = await _post('issue_qr', {'session_id': sessionId});
-    return QrTicketModel.fromJson(_asMap(data, 'issue_qr response'));
+    final elapsed = Stopwatch()..start();
+    final requestId = _pendingQrRequestIds.putIfAbsent(sessionId, () {
+      final random = Random.secure();
+      return List.generate(
+        24,
+        (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ).join();
+    });
+    // Retain the same id on an unknown outcome. The server replays one ticket.
+    final data = await _post('issue_qr', {
+      'session_id': sessionId,
+      'request_id': requestId,
+    });
+    final ticket = QrTicketModel.fromJson(
+      _asMap(data, 'issue_qr response'),
+      transit: elapsed.elapsed,
+    );
+    _pendingQrRequestIds.remove(sessionId);
+    if (ticket.remainingSeconds == 0) {
+      throw const TeacherApiException(
+        code: 'ticket_expired',
+        message: 'Mã QR đã hết hạn trong lúc chờ máy chủ. Đang lấy mã mới.',
+      );
+    }
+    return ticket;
   }
 
   @override
@@ -352,7 +377,28 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
-    return _withDeadline(_postOnce(action, body), mutation: true);
+    final timer = Stopwatch()..start();
+    PerformanceLog.mark('api_start', {'action': action});
+    try {
+      final result = await _withDeadline(
+        _postOnce(action, body),
+        mutation: true,
+      );
+      PerformanceLog.mark('api_done', {
+        'action': action,
+        'ms': timer.elapsedMilliseconds,
+      });
+      return result;
+    } catch (error) {
+      PerformanceLog.mark('api_failed', {
+        'action': action,
+        'ms': timer.elapsedMilliseconds,
+        'code': error is AttendanceApiException
+            ? error.code
+            : 'transport_error',
+      });
+      rethrow;
+    }
   }
 
   Future<T> _withDeadline<T>(
