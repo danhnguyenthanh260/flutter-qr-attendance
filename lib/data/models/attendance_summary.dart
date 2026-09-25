@@ -154,14 +154,16 @@ class AttendanceSummary {
     final acceptedByKey = _earliestAcceptedByEmail(ordered);
     final attempts = _allAttempts(ordered);
 
-    final finalized =
-        sessions.every((session) => session.status == SessionStatus.closed);
+    final finalized = sessions.every(
+      (session) => session.status == SessionStatus.closed,
+    );
 
     final retryCounts = <String, int>{};
     final rejectedCounts = <String, int>{};
     for (final attempt in attempts) {
-      final counter =
-          attempt.isRetryOfAcceptedSubmission ? retryCounts : rejectedCounts;
+      final counter = attempt.isRetryOfAcceptedSubmission
+          ? retryCounts
+          : rejectedCounts;
       counter[attempt.emailKey] = (counter[attempt.emailKey] ?? 0) + 1;
     }
 
@@ -170,8 +172,8 @@ class AttendanceSummary {
       final status = accepted != null
           ? StudentAttendanceStatus.present
           : finalized
-              ? StudentAttendanceStatus.absent
-              : StudentAttendanceStatus.notYet;
+          ? StudentAttendanceStatus.absent
+          : StudentAttendanceStatus.notYet;
 
       return StudentAttendanceRow(
         student: student,
@@ -181,29 +183,29 @@ class AttendanceSummary {
         retryCount: retryCounts[student.emailKey] ?? 0,
         rejectedCount: rejectedCounts[student.emailKey] ?? 0,
       );
-    }).toList()
-      ..sort(_compareRows);
+    }).toList()..sort(_compareRows);
 
     final retryEvents = attempts.map((attempt) {
       final student = rosterByKey[attempt.emailKey];
       final accepted = acceptedByKey[attempt.emailKey];
       return RetryEvent(
         attempt: attempt,
-        displayName: student?.displayName ??
+        displayName:
+            student?.displayName ??
             accepted?.displayName ??
             (attempt.email.isEmpty ? 'Không rõ' : attempt.email),
         isOnRoster: student != null,
         originalAttendanceId: accepted?.id,
         originalAcceptedAt: accepted?.acceptedAt,
       );
-    }).toList()
-      ..sort(_compareRetryEvents);
+    }).toList()..sort(_compareRetryEvents);
 
-    final unlisted = acceptedByKey.entries
-        .where((entry) => !rosterByKey.containsKey(entry.key))
-        .map((entry) => UnlistedSubmission(entry.value))
-        .toList()
-      ..sort((a, b) => a.email.compareTo(b.email));
+    final unlisted =
+        acceptedByKey.entries
+            .where((entry) => !rosterByKey.containsKey(entry.key))
+            .map((entry) => UnlistedSubmission(entry.value))
+            .toList()
+          ..sort((a, b) => a.email.compareTo(b.email));
 
     return AttendanceSummary(
       scope: AttendanceScope(
@@ -212,14 +214,17 @@ class AttendanceSummary {
         date: reference.slot.date,
         slotNumber: reference.slot.slotNumber,
         timeRange: reference.slot.timeRange,
-        sessionIds: sessions.map((session) => session.id).toList(growable: false),
+        sessionIds: sessions
+            .map((session) => session.id)
+            .toList(growable: false),
       ),
       sessions: List.unmodifiable(sessions),
       rows: List.unmodifiable(rows),
       retryEvents: List.unmodifiable(retryEvents),
       unlistedSubmissions: List.unmodifiable(unlisted),
       rosterChangedBetweenSessions: _rosterChanged(ordered),
-      asOf: asOf ?? ordered.map((snapshot) => snapshot.fetchedAt).reduce(_latest),
+      asOf:
+          asOf ?? ordered.map((snapshot) => snapshot.fetchedAt).reduce(_latest),
     );
   }
 
@@ -239,8 +244,10 @@ class AttendanceSummary {
     if (ordered.length < 2) return false;
     final first = ordered.first.roster.map((entry) => entry.emailKey).toSet();
     return ordered.any(
-      (snapshot) =>
-          !_setEquals(snapshot.roster.map((entry) => entry.emailKey).toSet(), first),
+      (snapshot) => !_setEquals(
+        snapshot.roster.map((entry) => entry.emailKey).toSet(),
+        first,
+      ),
     );
   }
 
@@ -282,9 +289,9 @@ class AttendanceSummary {
   }
 
   static int _compareRows(StudentAttendanceRow a, StudentAttendanceRow b) {
-    final byName = a.student.displayName
-        .toLowerCase()
-        .compareTo(b.student.displayName.toLowerCase());
+    final byName = a.student.displayName.toLowerCase().compareTo(
+      b.student.displayName.toLowerCase(),
+    );
     return byName != 0 ? byName : a.student.email.compareTo(b.student.email);
   }
 

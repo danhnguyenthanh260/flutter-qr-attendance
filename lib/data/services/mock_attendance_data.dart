@@ -18,34 +18,150 @@ const Map<int, int> _slotStartMinutes = {
 };
 
 const List<String> _surnames = [
-  'Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng', 'Huỳnh', 'Phan', 'Vũ',
-  'Võ', 'Đặng', 'Bùi', 'Đỗ', 'Hồ', 'Ngô', 'Dương', 'Lý',
+  'Nguyễn',
+  'Trần',
+  'Lê',
+  'Phạm',
+  'Hoàng',
+  'Huỳnh',
+  'Phan',
+  'Vũ',
+  'Võ',
+  'Đặng',
+  'Bùi',
+  'Đỗ',
+  'Hồ',
+  'Ngô',
+  'Dương',
+  'Lý',
 ];
 
 const List<String> _middleNames = [
-  'Văn', 'Thị', 'Hữu', 'Đức', 'Minh', 'Thanh', 'Quang', 'Hoài',
-  'Gia', 'Khánh', 'Ngọc', 'Thu', 'Anh', 'Bảo', 'Tuấn', 'Xuân',
+  'Văn',
+  'Thị',
+  'Hữu',
+  'Đức',
+  'Minh',
+  'Thanh',
+  'Quang',
+  'Hoài',
+  'Gia',
+  'Khánh',
+  'Ngọc',
+  'Thu',
+  'Anh',
+  'Bảo',
+  'Tuấn',
+  'Xuân',
 ];
 
 const List<String> _givenNames = [
-  'An', 'Bình', 'Cường', 'Dũng', 'Duy', 'Giang', 'Hà', 'Hải',
-  'Hạnh', 'Hiếu', 'Hùng', 'Huy', 'Khoa', 'Lâm', 'Linh', 'Long',
-  'Mai', 'Nam', 'Nga', 'Ngân', 'Nhung', 'Phong', 'Phúc', 'Quân',
-  'Quỳnh', 'Sơn', 'Tài', 'Tâm', 'Thảo', 'Thắng', 'Trang', 'Trung',
-  'Tuấn', 'Vy', 'Yến', 'Đạt',
+  'An',
+  'Bình',
+  'Cường',
+  'Dũng',
+  'Duy',
+  'Giang',
+  'Hà',
+  'Hải',
+  'Hạnh',
+  'Hiếu',
+  'Hùng',
+  'Huy',
+  'Khoa',
+  'Lâm',
+  'Linh',
+  'Long',
+  'Mai',
+  'Nam',
+  'Nga',
+  'Ngân',
+  'Nhung',
+  'Phong',
+  'Phúc',
+  'Quân',
+  'Quỳnh',
+  'Sơn',
+  'Tài',
+  'Tâm',
+  'Thảo',
+  'Thắng',
+  'Trang',
+  'Trung',
+  'Tuấn',
+  'Vy',
+  'Yến',
+  'Đạt',
 ];
 
 const Map<String, String> _asciiFolding = {
-  'à': 'a', 'á': 'a', 'ạ': 'a', 'ả': 'a', 'ã': 'a', 'â': 'a', 'ầ': 'a',
-  'ấ': 'a', 'ậ': 'a', 'ẩ': 'a', 'ẫ': 'a', 'ă': 'a', 'ằ': 'a', 'ắ': 'a',
-  'ặ': 'a', 'ẳ': 'a', 'ẵ': 'a', 'è': 'e', 'é': 'e', 'ẹ': 'e', 'ẻ': 'e',
-  'ẽ': 'e', 'ê': 'e', 'ề': 'e', 'ế': 'e', 'ệ': 'e', 'ể': 'e', 'ễ': 'e',
-  'ì': 'i', 'í': 'i', 'ị': 'i', 'ỉ': 'i', 'ĩ': 'i', 'ò': 'o', 'ó': 'o',
-  'ọ': 'o', 'ỏ': 'o', 'õ': 'o', 'ô': 'o', 'ồ': 'o', 'ố': 'o', 'ộ': 'o',
-  'ổ': 'o', 'ỗ': 'o', 'ơ': 'o', 'ờ': 'o', 'ớ': 'o', 'ợ': 'o', 'ở': 'o',
-  'ỡ': 'o', 'ù': 'u', 'ú': 'u', 'ụ': 'u', 'ủ': 'u', 'ũ': 'u', 'ư': 'u',
-  'ừ': 'u', 'ứ': 'u', 'ự': 'u', 'ử': 'u', 'ữ': 'u', 'ỳ': 'y', 'ý': 'y',
-  'ỵ': 'y', 'ỷ': 'y', 'ỹ': 'y', 'đ': 'd',
+  'à': 'a',
+  'á': 'a',
+  'ạ': 'a',
+  'ả': 'a',
+  'ã': 'a',
+  'â': 'a',
+  'ầ': 'a',
+  'ấ': 'a',
+  'ậ': 'a',
+  'ẩ': 'a',
+  'ẫ': 'a',
+  'ă': 'a',
+  'ằ': 'a',
+  'ắ': 'a',
+  'ặ': 'a',
+  'ẳ': 'a',
+  'ẵ': 'a',
+  'è': 'e',
+  'é': 'e',
+  'ẹ': 'e',
+  'ẻ': 'e',
+  'ẽ': 'e',
+  'ê': 'e',
+  'ề': 'e',
+  'ế': 'e',
+  'ệ': 'e',
+  'ể': 'e',
+  'ễ': 'e',
+  'ì': 'i',
+  'í': 'i',
+  'ị': 'i',
+  'ỉ': 'i',
+  'ĩ': 'i',
+  'ò': 'o',
+  'ó': 'o',
+  'ọ': 'o',
+  'ỏ': 'o',
+  'õ': 'o',
+  'ô': 'o',
+  'ồ': 'o',
+  'ố': 'o',
+  'ộ': 'o',
+  'ổ': 'o',
+  'ỗ': 'o',
+  'ơ': 'o',
+  'ờ': 'o',
+  'ớ': 'o',
+  'ợ': 'o',
+  'ở': 'o',
+  'ỡ': 'o',
+  'ù': 'u',
+  'ú': 'u',
+  'ụ': 'u',
+  'ủ': 'u',
+  'ũ': 'u',
+  'ư': 'u',
+  'ừ': 'u',
+  'ứ': 'u',
+  'ự': 'u',
+  'ử': 'u',
+  'ữ': 'u',
+  'ỳ': 'y',
+  'ý': 'y',
+  'ỵ': 'y',
+  'ỷ': 'y',
+  'ỹ': 'y',
+  'đ': 'd',
 };
 
 String _toAscii(String value) {
@@ -136,13 +252,11 @@ class MockAttendanceDataset {
       );
     }
 
-    final cutoff = session.closedAt?.add(
-          const Duration(seconds: _closingGraceSeconds),
-        ) ??
+    final cutoff =
+        session.closedAt?.add(const Duration(seconds: _closingGraceSeconds)) ??
         now;
     final effectiveNow = now.isBefore(cutoff) ? now : cutoff;
-    final elapsedSeconds =
-        effectiveNow.difference(session.openedAt).inSeconds;
+    final elapsedSeconds = effectiveNow.difference(session.openedAt).inSeconds;
 
     final attendance = <AttendanceRecord>[];
     final attempts = <AttendanceAttempt>[];
@@ -152,8 +266,9 @@ class MockAttendanceDataset {
       final event = events[index];
       if (event.offsetSeconds > elapsedSeconds) continue;
 
-      final occurredAt =
-          session.openedAt.add(Duration(seconds: event.offsetSeconds));
+      final occurredAt = session.openedAt.add(
+        Duration(seconds: event.offsetSeconds),
+      );
 
       if (event.kind == _PlannedEventKind.accepted) {
         attendance.add(
@@ -205,8 +320,7 @@ class MockAttendanceDataset {
       final initials = '${_toAscii(surname)[0]}${_toAscii(middleName)[0]}';
       final ordinal = (index + 1).toString().padLeft(2, '0');
 
-      var email =
-          '${_toAscii(givenName)}$initials$suffix$ordinal@fpt.edu.vn';
+      var email = '${_toAscii(givenName)}$initials$suffix$ordinal@fpt.edu.vn';
       while (!usedEmails.add(email)) {
         email = '${_toAscii(givenName)}$initials$suffix${ordinal}x@fpt.edu.vn';
       }
@@ -240,8 +354,11 @@ class MockAttendanceDataset {
     final sequenceByKey = <String, int>{};
 
     for (final entry in schedule) {
-      final date = DateTime(today.year, today.month, today.day)
-          .subtract(Duration(days: entry.$1));
+      final date = DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).subtract(Duration(days: entry.$1));
       final slotNumber = entry.$2;
       final key = '${_formatDate(date)}|$slotNumber';
       final sequence = (sequenceByKey[key] ?? 0) + 1;
@@ -325,7 +442,9 @@ class MockAttendanceDataset {
           studentName: student.studentName,
           offsetSeconds: 60 + random.nextInt(500),
           attemptType: expired ? 'grant_expired' : 'session_closed',
-          reason: expired ? 'grace_expired' : 'session_not_accepting_submissions',
+          reason: expired
+              ? 'grace_expired'
+              : 'session_not_accepting_submissions',
         ),
       );
     }

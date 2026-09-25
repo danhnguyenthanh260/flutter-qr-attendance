@@ -1,9 +1,8 @@
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
-import 'package:flutter_qr_attendance/providers/attendance_history_provider.dart';
-import 'package:flutter_qr_attendance/providers/attendance_results_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_history_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_results_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/attendance_fixtures.dart';
 
@@ -52,8 +51,10 @@ void main() {
     await provider.initialize();
 
     expect(provider.status, HistoryDataStatus.ok);
-    expect(provider.groups.map((group) => group.date).toList(),
-        ['2026-09-22', '2026-09-15']);
+    expect(provider.groups.map((group) => group.date).toList(), [
+      '2026-09-22',
+      '2026-09-15',
+    ]);
     expect(provider.selectedGroup!.date, '2026-09-22');
   });
 

@@ -3,14 +3,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
-import 'core/constants/app_colors.dart';
+import 'app/app_shell.dart';
+import 'core/theme/app_theme.dart';
 import 'core/utils/performance_log.dart';
 import 'data/services/attendance_service.dart';
 import 'data/services/google_apps_script_attendance_service.dart';
-import 'providers/attendance_history_provider.dart';
-import 'providers/attendance_results_provider.dart';
-import 'providers/session_provider.dart';
-import 'views/shell/app_shell.dart';
+import 'features/attendance/attendance_history_provider.dart';
+import 'features/attendance/attendance_results_provider.dart';
+import 'features/teaching/session_provider.dart';
 
 void main() async {
   PerformanceLog.mark('startup');
@@ -58,20 +58,7 @@ class QrAttendanceApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
-          primary: AppColors.primary,
-          surface: AppColors.surface,
-        ),
-        fontFamily: 'Segoe UI',
-        scaffoldBackgroundColor: AppColors.background,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.surface,
-          elevation: 0,
-        ),
-      ),
+      theme: AppTheme.light,
       home: const AppShell(),
     );
   }

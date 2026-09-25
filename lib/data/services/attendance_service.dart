@@ -7,22 +7,12 @@ import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
+import '../repositories/attendance_repository.dart';
 import 'attendance_api_exception.dart';
 import 'mock_attendance_data.dart';
 
-abstract class AttendanceService {
-  Future<List<ClassModel>> getClasses();
-  Future<List<SessionSlot>> getSlotsForClass(String classId);
-  Future<AttendanceSession> startSession({
-    required String classId,
-    required SessionSlot slot,
-  });
-  Future<AttendanceSession?> getActiveSession();
-  Future<AttendanceSession> closeSession(String sessionId);
-  Future<QrTicketModel> getNextQrTicket(String sessionId);
-  Future<List<AttendanceSession>> listSessions({String? classId, String? date});
-  Future<SessionResults> getSessionResults(String sessionId);
-}
+/// Compatibility name for backend adapters and existing test doubles.
+typedef AttendanceService = AttendanceRepository;
 
 class MockAttendanceService implements AttendanceService {
   final bool simulateDelay;
@@ -33,15 +23,13 @@ class MockAttendanceService implements AttendanceService {
   int _generationCounter = 0;
   MockAttendanceDataset? _cachedDataset;
 
-  MockAttendanceService({
-    this.simulateDelay = true,
-    DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+  MockAttendanceService({this.simulateDelay = true, DateTime Function()? clock})
+    : _clock = clock ?? DateTime.now;
 
   MockAttendanceDataset get dataset => _cachedDataset ??= MockAttendanceDataset(
-        classes: _mockClasses,
-        today: _clock(),
-      );
+    classes: _mockClasses,
+    today: _clock(),
+  );
 
   void configureRoster(String classId, List<RosterEntry> roster) {
     dataset.setRoster(classId, roster);
@@ -49,13 +37,12 @@ class MockAttendanceService implements AttendanceService {
 
   Future<void> _delay(int ms) async {
     if (simulateDelay) {
-      await Future.delayed(Duration(milliseconds: ms));
+      await Future<void>.delayed(Duration(milliseconds: ms));
     }
   }
 
   void _trackSession(AttendanceSession session) {
-    final index =
-        _createdSessions.indexWhere((item) => item.id == session.id);
+    final index = _createdSessions.indexWhere((item) => item.id == session.id);
     if (index >= 0) {
       _createdSessions[index] = session;
     } else {
@@ -135,12 +122,15 @@ class MockAttendanceService implements AttendanceService {
   }) async {
     await _delay(500);
 
-    if (_activeSession != null && _activeSession!.status == SessionStatus.active) {
+    if (_activeSession != null &&
+        _activeSession!.status == SessionStatus.active) {
       if (_activeSession!.classId == classId &&
           _activeSession!.slot.slotNumber == slot.slotNumber) {
         return _activeSession!;
       }
-      throw Exception('Đang có một phiên khác đang mở. Vui lòng đóng phiên trước khi mở phiên mới.');
+      throw Exception(
+        'Đang có một phiên khác đang mở. Vui lòng đóng phiên trước khi mở phiên mới.',
+      );
     }
 
     final classItem = _mockClasses.firstWhere(
@@ -193,7 +183,8 @@ class MockAttendanceService implements AttendanceService {
     _generationCounter++;
     final now = DateTime.now();
     final expiresAt = now.add(const Duration(seconds: 30));
-    final ticketCode = 'TKT_${sessionId}_G${_generationCounter}_${now.millisecondsSinceEpoch % 100000}';
+    final ticketCode =
+        'TKT_${sessionId}_G${_generationCounter}_${now.millisecondsSinceEpoch % 100000}';
     final formUrl =
         'https://docs.google.com/forms/d/e/1FAIpQLScMockForms/viewform?usp=pp_url&entry.1001=$ticketCode&entry.1002=$sessionId';
 
@@ -222,14 +213,15 @@ class MockAttendanceService implements AttendanceService {
       byId[session.id] = session;
     }
 
-    final matches = byId.values
-        .where(
-          (session) =>
-              (classId == null || session.classId == classId) &&
-              (date == null || session.slot.date == date),
-        )
-        .toList()
-      ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
+    final matches =
+        byId.values
+            .where(
+              (session) =>
+                  (classId == null || session.classId == classId) &&
+                  (date == null || session.slot.date == date),
+            )
+            .toList()
+          ..sort((a, b) => b.openedAt.compareTo(a.openedAt));
 
     return matches;
   }
@@ -443,7 +435,7 @@ class GoogleSheetAttendanceService implements AttendanceService {
   AttendanceSession? _remoteSession;
 
   GoogleSheetAttendanceService({MockAttendanceService? mockService})
-      : _mockService = mockService ?? MockAttendanceService();
+    : _mockService = mockService ?? MockAttendanceService();
 
   /// Decodes one successful Apps Script response and centralizes API errors.
   Map<String, dynamic> _decodePayload(http.Response response) {
@@ -487,9 +479,7 @@ class GoogleSheetAttendanceService implements AttendanceService {
   @override
   Future<List<ClassModel>> getClasses() async {
     // The API returns class records using the keys expected by ClassModel.
-    final payload = await _get(
-      Uri.parse('$_baseUrl?action=classes'),
-    );
+    final payload = await _get(Uri.parse('$_baseUrl?action=classes'));
 
     final classes = _dataList(payload)
         .map((item) => ClassModel.fromJson(item as Map<String, dynamic>))
@@ -503,12 +493,8 @@ class GoogleSheetAttendanceService implements AttendanceService {
   @override
   Future<List<SessionSlot>> getSlotsForClass(String classId) async {
     // Uri.replace safely encodes classId instead of concatenating raw text.
-    final uri = Uri.parse(_baseUrl).replace(
-      queryParameters: {
-        'action': 'slots',
-        'classId': classId,
-      },
-    );
+    final uri = Uri.parse(_baseUrl)
+        .replace(queryParameters: {'action': 'slots', 'classId': classId});
     final payload = await _get(uri);
 
     return _dataList(payload)
@@ -601,14 +587,16 @@ class GoogleSheetAttendanceService implements AttendanceService {
         'expiresAt': expiresAt.toIso8601String(),
       });
 
-      return Future.value(QrTicketModel(
-        ticketCode: session.token!,
-        formUrl: qrPayload,
-        generation: 1,
-        validSeconds: 30,
-        createdAt: now,
-        expiresAt: expiresAt,
-      ));
+      return Future.value(
+        QrTicketModel(
+          ticketCode: session.token!,
+          formUrl: qrPayload,
+          generation: 1,
+          validSeconds: 30,
+          createdAt: now,
+          expiresAt: expiresAt,
+        ),
+      );
     }
 
     // Preserve the original mock QR fallback for non-remote sessions.
@@ -637,10 +625,7 @@ class GoogleSheetAttendanceService implements AttendanceService {
   @override
   Future<SessionResults> getSessionResults(String sessionId) async {
     final uri = Uri.parse(_baseUrl).replace(
-      queryParameters: {
-        'action': 'session_results',
-        'sessionId': sessionId,
-      },
+      queryParameters: {'action': 'session_results', 'sessionId': sessionId},
     );
     final payload = await _get(uri);
     final data = payload['data'];

@@ -1,12 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_qr_attendance/core/storage/session_storage.dart';
 import 'package:flutter_qr_attendance/data/models/qr_ticket_model.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
-import 'package:flutter_qr_attendance/providers/session_provider.dart';
+import 'package:flutter_qr_attendance/features/teaching/session_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 class ClosingService extends MockAttendanceService {
   ClosingService() : super(simulateDelay: false);

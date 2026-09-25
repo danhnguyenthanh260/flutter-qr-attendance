@@ -1,10 +1,9 @@
 import 'dart:convert';
 
+import 'package:flutter_qr_attendance/data/services/google_apps_script_attendance_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-
-import 'package:flutter_qr_attendance/data/services/google_apps_script_attendance_service.dart';
 
 GoogleAppsScriptAttendanceService createService(http.Client client) {
   return GoogleAppsScriptAttendanceService(
@@ -46,10 +45,8 @@ void main() {
       );
     });
 
-    final sessions = await createService(client).listSessions(
-      classId: 'CLASS_1',
-      date: '2026-09-22',
-    );
+    final sessions = await createService(client)
+        .listSessions(classId: 'CLASS_1', date: '2026-09-22');
 
     expect(requested.queryParameters['action'], 'sessions');
     expect(requested.queryParameters['class_id'], 'CLASS_1');
@@ -136,8 +133,10 @@ void main() {
     expect(results.roster.first.emailKey, 'an@fpt.edu.vn');
     expect(results.roster.last.studentName, isNull);
     expect(results.roster.last.displayName, 'binh');
-    expect(results.attendance.single.acceptedAt,
-        DateTime.parse('2026-09-22T09:19:00.000'));
+    expect(
+      results.attendance.single.acceptedAt,
+      DateTime.parse('2026-09-22T09:19:00.000'),
+    );
     expect(results.attempts.single.isRetryOfAcceptedSubmission, isTrue);
     expect(results.fetchedAt, DateTime.utc(2026, 9, 22, 8));
   });
@@ -163,7 +162,11 @@ void main() {
       throwsA(
         isA<TeacherApiException>()
             .having((error) => error.code, 'code', 'roster_missing')
-            .having((error) => error.isRosterMissing, 'isRosterMissing', isTrue),
+            .having(
+              (error) => error.isRosterMissing,
+              'isRosterMissing',
+              isTrue,
+            ),
       ),
     );
   });
@@ -173,7 +176,11 @@ void main() {
       return http.Response(
         jsonEncode({
           'ok': true,
-          'data': {'roster': [], 'attendance': [], 'attempts': []},
+          'data': {
+            'roster': <Object?>[],
+            'attendance': <Object?>[],
+            'attempts': <Object?>[],
+          },
         }),
         200,
         headers: {'content-type': 'application/json'},

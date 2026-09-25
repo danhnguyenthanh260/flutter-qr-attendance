@@ -1,8 +1,8 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_qr_attendance/core/storage/session_storage.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
-import 'package:flutter_qr_attendance/providers/session_provider.dart';
+import 'package:flutter_qr_attendance/features/teaching/session_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('MemorySessionStorage Tests', () {
@@ -15,7 +15,11 @@ void main() {
         id: 'SES_TEST_101',
         classId: 'CLASS_TEST',
         className: 'Test Class',
-        slot: SessionSlot(slotNumber: 1, timeRange: '07:30 - 09:00', date: '2026-09-18'),
+        slot: SessionSlot(
+          slotNumber: 1,
+          timeRange: '07:30 - 09:00',
+          date: '2026-09-18',
+        ),
         openedAt: now,
         status: SessionStatus.active,
       );
@@ -38,10 +42,7 @@ void main() {
     setUp(() {
       mockService = MockAttendanceService(simulateDelay: false);
       memoryStorage = MemorySessionStorage();
-      provider = SessionProvider(
-        service: mockService,
-        storage: memoryStorage,
-      );
+      provider = SessionProvider(service: mockService, storage: memoryStorage);
     });
 
     tearDown(() {

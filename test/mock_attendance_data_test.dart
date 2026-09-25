@@ -1,10 +1,9 @@
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:flutter_qr_attendance/data/models/attendance_summary.dart';
 import 'package:flutter_qr_attendance/data/models/session_day_group.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   late DateTime now;
@@ -21,7 +20,10 @@ void main() {
     final groups = SessionDayGroup.fromSessions(sessions);
 
     expect(sessions, isNotEmpty);
-    expect(sessions.every((item) => item.status == SessionStatus.closed), isTrue);
+    expect(
+      sessions.every((item) => item.status == SessionStatus.closed),
+      isTrue,
+    );
     expect(groups.where((group) => group.sessionCount > 1), hasLength(1));
   });
 
@@ -60,10 +62,7 @@ void main() {
     final later = await service.getSessionResults(session.id);
 
     expect(later.attendance, isNotEmpty);
-    expect(
-      AttendanceSummary.fromSessionResults(later).isProvisional,
-      isTrue,
-    );
+    expect(AttendanceSummary.fromSessionResults(later).isProvisional, isTrue);
   });
 
   test('phiên vừa tạo xuất hiện trong danh sách theo ngày', () async {
@@ -82,26 +81,35 @@ void main() {
     expect(today.map((item) => item.id), contains(session.id));
   });
 
-  test('lớp không có roster trả lỗi roster_missing thay vì bảng rỗng', () async {
-    final classes = await service.getClasses();
-    final sessions = await service.listSessions(classId: classes.first.id);
-    service.configureRoster(classes.first.id, const []);
+  test(
+    'lớp không có roster trả lỗi roster_missing thay vì bảng rỗng',
+    () async {
+      final classes = await service.getClasses();
+      final sessions = await service.listSessions(classId: classes.first.id);
+      service.configureRoster(classes.first.id, const []);
 
-    await expectLater(
-      service.getSessionResults(sessions.first.id),
-      throwsA(
-        isA<AttendanceApiException>()
-            .having((error) => error.isRosterMissing, 'isRosterMissing', isTrue),
-      ),
-    );
-  });
+      await expectLater(
+        service.getSessionResults(sessions.first.id),
+        throwsA(
+          isA<AttendanceApiException>().having(
+            (error) => error.isRosterMissing,
+            'isRosterMissing',
+            isTrue,
+          ),
+        ),
+      );
+    },
+  );
 
   test('phiên không tồn tại trả lỗi not_found', () async {
     await expectLater(
       service.getSessionResults('SES_KHONG_CO'),
       throwsA(
-        isA<AttendanceApiException>()
-            .having((error) => error.isNotFound, 'isNotFound', isTrue),
+        isA<AttendanceApiException>().having(
+          (error) => error.isNotFound,
+          'isNotFound',
+          isTrue,
+        ),
       ),
     );
   });

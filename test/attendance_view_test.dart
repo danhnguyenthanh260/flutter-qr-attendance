@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
-import 'package:flutter_qr_attendance/providers/attendance_results_provider.dart';
-import 'package:flutter_qr_attendance/views/attendance/today_attendance_view.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_results_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/today_attendance_view.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'helpers/attendance_fixtures.dart';
 
@@ -34,16 +33,15 @@ void main() {
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
         value: provider,
-        child: const MaterialApp(
-          home: Scaffold(body: TodayAttendanceView()),
-        ),
+        child: const MaterialApp(home: Scaffold(body: TodayAttendanceView())),
       ),
     );
     await tester.pumpAndSettle();
   }
 
-  testWidgets('phiên đang mở hiển thị chưa điểm danh và cảnh báo tạm tính',
-      (tester) async {
+  testWidgets('phiên đang mở hiển thị chưa điểm danh và cảnh báo tạm tính', (
+    tester,
+  ) async {
     final service = FakeAttendanceService(sessions: [buildSession()])
       ..setResults(
         buildResults(
@@ -62,8 +60,9 @@ void main() {
     expect(find.text('Nhật ký lượt nộp lại'), findsOneWidget);
   });
 
-  testWidgets('phiên đã chốt hiển thị vắng và trạng thái đã chốt',
-      (tester) async {
+  testWidgets('phiên đã chốt hiển thị vắng và trạng thái đã chốt', (
+    tester,
+  ) async {
     final closed = buildSession(
       status: SessionStatus.closed,
       closedAt: kBaseTime.add(const Duration(minutes: 50)),
@@ -84,8 +83,9 @@ void main() {
     expect(find.text('Chưa điểm danh'), findsNothing);
   });
 
-  testWidgets('thiếu roster hiển thị cảnh báo thay vì bảng số 0',
-      (tester) async {
+  testWidgets('thiếu roster hiển thị cảnh báo thay vì bảng số 0', (
+    tester,
+  ) async {
     final service = FakeAttendanceService(sessions: [buildSession()])
       ..failSession(
         'SES_1',

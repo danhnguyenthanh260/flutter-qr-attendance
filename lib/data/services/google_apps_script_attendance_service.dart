@@ -11,6 +11,7 @@ import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
+import '../repositories/catalog_repository.dart';
 import 'attendance_api_exception.dart';
 import 'attendance_service.dart';
 
@@ -88,8 +89,6 @@ AttendanceService createConfiguredTeacherAttendanceService() {
 /// explicitly supplies a deployed endpoint and an authenticated teacher identity.
 /// QR ticket issuance remains owned by issue #7 and deliberately fails closed here.
 class GoogleAppsScriptAttendanceService implements AttendanceService {
-  static const Duration _classesCacheTtl = Duration(minutes: 5);
-
   final Uri _endpoint;
   final String _teacherKey;
   final String _teacherId;
@@ -97,15 +96,20 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   final DateTime Function() _clock;
   final CatalogStorage? catalogStorage;
   final Duration requestTimeout;
-  final Map<String, Future<List<SessionSlot>>> _slotsInFlight = {};
-  final Map<String, ({DateTime saved, List<SessionSlot> items})> _slotsCache =
-      {};
   final Map<String, String> _pendingStartRequestIds = {};
   final Map<String, String> _pendingQrRequestIds = {};
   final Map<String, Future<dynamic>> _readsInFlight = {};
-  List<ClassModel>? _classesCache;
-  DateTime? _classesCachedAt;
-  Future<List<ClassModel>>? _classesInFlight;
+  late final CatalogRepository _catalog = CatalogRepository(
+    storage: catalogStorage,
+    clock: _clock,
+    loadClasses: () async => _asList(await _get('classes'), 'classes')
+        .map((item) => ClassModel.fromJson(_asMap(item, 'class item')))
+        .toList(growable: false),
+    loadSlots: (classId) async =>
+        _asList(await _get('slots', query: {'class_id': classId}), 'slots')
+            .map((item) => SessionSlot.fromJson(_asMap(item, 'slot item')))
+            .toList(growable: false),
+  );
 
   GoogleAppsScriptAttendanceService({
     required Uri endpoint,
@@ -138,91 +142,11 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   @override
-  Future<List<ClassModel>> getClasses() async {
-    final cached = _classesCache;
-    final cachedAt = _classesCachedAt;
-    if (cached != null &&
-        cachedAt != null &&
-        _clock().difference(cachedAt) < _classesCacheTtl) {
-      return cached;
-    }
-
-    final inFlight = _classesInFlight;
-    if (inFlight != null) return inFlight;
-
-    final request = _loadClasses();
-    _classesInFlight = request;
-    return request;
-  }
-
-  Future<List<ClassModel>> _loadClasses() async {
-    try {
-      var cached = await catalogStorage?.read('classes', _clock());
-      List<ClassModel> decode(dynamic data) => _asList(data, 'classes')
-          .map((item) => ClassModel.fromJson(_asMap(item, 'class item')))
-          .toList(growable: false);
-      List<ClassModel>? classes;
-      if (cached != null) {
-        try {
-          classes = decode(cached.items);
-        } catch (_) {
-          cached = null;
-        }
-      }
-      classes ??= decode(await _get('classes'));
-      _classesCache = classes;
-      _classesCachedAt = cached?.saved ?? _clock();
-      if (cached == null) {
-        await catalogStorage?.write(
-          'classes',
-          classes.map((item) => item.toJson()).toList(),
-          _clock(),
-        );
-      }
-      return classes;
-    } finally {
-      _classesInFlight = null;
-    }
-  }
+  Future<List<ClassModel>> getClasses() => _catalog.getClasses();
 
   @override
-  Future<List<SessionSlot>> getSlotsForClass(String classId) async {
-    final cached = _slotsCache[classId];
-    if (cached != null &&
-        _clock().difference(cached.saved) < _classesCacheTtl) {
-      return cached.items;
-    }
-    return _slotsInFlight[classId] ??= _loadSlots(classId);
-  }
-
-  Future<List<SessionSlot>> _loadSlots(String classId) async {
-    try {
-      var stored = await catalogStorage?.read('slots:$classId', _clock());
-      List<SessionSlot> decode(dynamic data) => _asList(data, 'slots')
-          .map((item) => SessionSlot.fromJson(_asMap(item, 'slot item')))
-          .toList(growable: false);
-      List<SessionSlot>? slots;
-      if (stored != null) {
-        try {
-          slots = decode(stored.items);
-        } catch (_) {
-          stored = null;
-        }
-      }
-      slots ??= decode(await _get('slots', query: {'class_id': classId}));
-      _slotsCache[classId] = (saved: stored?.saved ?? _clock(), items: slots);
-      if (stored == null) {
-        await catalogStorage?.write(
-          'slots:$classId',
-          slots.map((item) => item.toJson()).toList(),
-          _clock(),
-        );
-      }
-      return slots;
-    } finally {
-      _slotsInFlight.remove(classId);
-    }
-  }
+  Future<List<SessionSlot>> getSlotsForClass(String classId) =>
+      _catalog.getSlots(classId);
 
   @override
   Future<AttendanceSession> startSession({
@@ -552,7 +476,9 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
             errorMap['message'] as String? ??
             'Teacher API request failed for $action.',
         details: errorMap['details'] is Map
-            ? Map<String, dynamic>.from(errorMap['details'] as Map)
+            ? Map<String, dynamic>.from(
+                errorMap['details'] as Map<Object?, Object?>,
+              )
             : null,
       );
     }
@@ -560,7 +486,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   Map<String, dynamic> _asMap(dynamic value, String context) {
-    if (value is Map) {
+    if (value is Map<Object?, Object?>) {
       return Map<String, dynamic>.from(value);
     }
     throw TeacherApiException(

@@ -1,0 +1,36 @@
+name: Quality
+on:
+  pull_request:
+  push:
+    branches: [main, master, 'feature/**']
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test tool
+      - run: flutter analyze --fatal-infos
+      - run: dart run tool/check_architecture.dart
+      - run: flutter test
+      # Compilation only: configured trial builds remain local, no teacher keys in CI.
+      - run: flutter build windows --release --no-pub
+  apps-script:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps_script
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+      - run: npm test

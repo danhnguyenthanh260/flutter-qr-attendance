@@ -1,8 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
-import 'package:flutter_qr_attendance/providers/attendance_results_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_results_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/attendance_fixtures.dart';
 

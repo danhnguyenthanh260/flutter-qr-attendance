@@ -1,11 +1,10 @@
 import 'dart:convert';
 
+import 'package:flutter_qr_attendance/data/models/session_model.dart';
+import 'package:flutter_qr_attendance/data/services/google_apps_script_attendance_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-
-import 'package:flutter_qr_attendance/data/models/session_model.dart';
-import 'package:flutter_qr_attendance/data/services/google_apps_script_attendance_service.dart';
 
 GoogleAppsScriptAttendanceService createService(http.Client client) {
   return GoogleAppsScriptAttendanceService(
@@ -358,7 +357,10 @@ void main() {
             'generation': 3,
             'valid_seconds': 30,
             'created_at': DateTime.now().toUtc().toIso8601String(),
-            'expires_at': DateTime.now().toUtc().add(const Duration(seconds: 30)).toIso8601String(),
+            'expires_at': DateTime.now()
+                .toUtc()
+                .add(const Duration(seconds: 30))
+                .toIso8601String(),
           },
         }),
         200,

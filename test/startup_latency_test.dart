@@ -2,15 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:flutter_qr_attendance/core/storage/catalog_storage.dart';
 import 'package:flutter_qr_attendance/core/storage/session_storage.dart';
 import 'package:flutter_qr_attendance/data/models/class_model.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/google_apps_script_attendance_service.dart';
-import 'package:flutter_qr_attendance/providers/session_provider.dart';
+import 'package:flutter_qr_attendance/features/teaching/session_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'helpers/attendance_fixtures.dart';
 

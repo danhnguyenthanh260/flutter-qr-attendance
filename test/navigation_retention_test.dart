@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_qr_attendance/app/app_shell.dart';
+import 'package:flutter_qr_attendance/core/storage/session_storage.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_history_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_results_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/history_attendance_view.dart';
+import 'package:flutter_qr_attendance/features/teaching/session_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_qr_attendance/core/storage/session_storage.dart';
-import 'package:flutter_qr_attendance/providers/session_provider.dart';
-import 'package:flutter_qr_attendance/providers/attendance_results_provider.dart';
-import 'package:flutter_qr_attendance/providers/attendance_history_provider.dart';
-import 'package:flutter_qr_attendance/views/shell/app_shell.dart';
-import 'package:flutter_qr_attendance/views/attendance/history_attendance_view.dart';
 
 import 'helpers/attendance_fixtures.dart';
 

@@ -1,9 +1,4 @@
-enum SessionStatus {
-  idle,
-  active,
-  closing,
-  closed,
-}
+enum SessionStatus { idle, active, closing, closed }
 
 class SessionSlot {
   // The server uses this ID to connect the selected slot to a Sessions row.
