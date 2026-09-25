@@ -55,20 +55,39 @@ class SessionProvider extends ChangeNotifier {
   bool get isRotatingQr => _isRotatingQr;
   bool get isOffline => _isOffline;
 
-  // Load initial classes and restore session state (Issue #21)
-  Future<void> loadInitialData() async {
+  bool _isInitialized = false;
+  Future<void>? _initialLoadFuture;
+
+  bool get isInitialized => _isInitialized;
+
+  // Load initial classes and restore session state (Issue #21, Issue #48)
+  Future<void> loadInitialData({bool force = false}) {
+    if (_initialLoadFuture != null && !force) {
+      return _initialLoadFuture!;
+    }
+    _initialLoadFuture = _executeLoadInitialData();
+    return _initialLoadFuture!;
+  }
+
+  Future<void> _executeLoadInitialData() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      _classes = await _service.getClasses();
-      final startupWork = <Future<void>>[_restoreActiveSession()];
-      if (_classes.isNotEmpty) {
-        startupWork.add(selectClass(_classes.first));
+      // Parallelize getClasses and _restoreActiveSession to avoid sequential network round trips
+      final values = await Future.wait<dynamic>([
+        _service.getClasses(),
+        _restoreActiveSession(),
+      ]);
+
+      _classes = values[0] as List<ClassModel>;
+      if (_classes.isNotEmpty && _selectedClass == null) {
+        await selectClass(_classes.first);
       }
-      await Future.wait(startupWork);
+      _isInitialized = true;
     } catch (e) {
+      _initialLoadFuture = null; // allow retry on failure
       _errorMessage = 'Không thể tải dữ liệu phiên: $e';
     } finally {
       _isLoading = false;
@@ -76,26 +95,30 @@ class SessionProvider extends ChangeNotifier {
     }
   }
 
-  /// Slots and the server-side active-session lookup are independent. Starting
-  /// them together prevents the launch screen from waiting for two Apps Script
-  /// round trips in sequence.
+  /// Slots, class list, and server-side active-session lookup run independently.
+  /// Parallel execution prevents the launch screen from waiting for sequential
+  /// Apps Script round trips.
   Future<void> _restoreActiveSession() async {
-    final values = await Future.wait<Object?>([
-      _service.getActiveSession(),
-      _storage.loadActiveSession(),
-    ]);
-    final serverSession = values[0] as AttendanceSession?;
-    final cachedSession = values[1] as AttendanceSession?;
+    try {
+      final values = await Future.wait<Object?>([
+        _service.getActiveSession(),
+        _storage.loadActiveSession(),
+      ]);
+      final serverSession = values[0] as AttendanceSession?;
+      final cachedSession = values[1] as AttendanceSession?;
 
-    if (serverSession != null && serverSession.status == SessionStatus.active) {
-      _activeSession = serverSession;
-      await _storage.saveActiveSession(serverSession);
-      await startQrRotation();
-    } else if (cachedSession != null) {
-      // Cache exists but server is not active or closed -> clear cache, no reopening.
-      await _storage.clearActiveSession();
-      _activeSession = null;
-    } else {
+      if (serverSession != null && serverSession.status == SessionStatus.active) {
+        _activeSession = serverSession;
+        await _storage.saveActiveSession(serverSession);
+        await startQrRotation();
+      } else if (cachedSession != null) {
+        // Cache exists but server is not active or closed -> clear cache, no reopening.
+        await _storage.clearActiveSession();
+        _activeSession = null;
+      } else {
+        _activeSession = null;
+      }
+    } catch (_) {
       _activeSession = null;
     }
   }

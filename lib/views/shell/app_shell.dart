@@ -15,12 +15,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
-
-  final List<Widget> _views = const [
-    SessionSelectionView(),
-    AttendanceView(),
-    AiAssistantPlaceholderView(),
-  ];
+  final Set<int> _visitedIndices = {0};
 
   final List<String> _titles = const [
     'Quản lý phiên điểm danh & Trình chiếu QR',
@@ -257,9 +252,20 @@ class _AppShellState extends State<AppShell> {
                   ),
                 ),
 
-                // Content View
+                // Content View (Lazy IndexedStack to preserve view state and prevent reload)
                 Expanded(
-                  child: _views[_selectedIndex],
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: [
+                      const SessionSelectionView(),
+                      _visitedIndices.contains(1)
+                          ? const AttendanceView()
+                          : const SizedBox.shrink(),
+                      _visitedIndices.contains(2)
+                          ? const AiAssistantPlaceholderView()
+                          : const SizedBox.shrink(),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -282,7 +288,13 @@ class _AppShellState extends State<AppShell> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => setState(() => _selectedIndex = index),
+          onTap: () {
+            if (_selectedIndex == index) return;
+            setState(() {
+              _selectedIndex = index;
+              _visitedIndices.add(index);
+            });
+          },
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

@@ -68,27 +68,47 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
           );
         }
 
-        if (provider.isLoading) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(color: AppColors.primary),
-                SizedBox(height: 16),
-                Text(
-                  'Đang tải thông tin lớp học...',
-                  style: AppTypography.bodySecondary,
-                ),
-              ],
-            ),
-          );
-        }
-
         return SingleChildScrollView(
           padding: const EdgeInsets.all(28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Progress banner when loading initial data (non-blocking first frame)
+              if (provider.isLoading && provider.classes.isEmpty) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                  ),
+                  child: const Row(
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Đang đồng bộ dữ liệu lớp học và kiểm tra phiên...',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               // Error banner if any
               if (provider.errorMessage != null) ...[
                 Container(
@@ -185,10 +205,13 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                                 ),
                                 elevation: 0,
                               ),
-                              onPressed: (provider.isStartingSession || provider.hasActiveSession)
+                              onPressed: (provider.isStartingSession ||
+                                      provider.hasActiveSession ||
+                                      (provider.isLoading && provider.classes.isEmpty))
                                   ? null
                                   : () => _handleStartSession(provider),
-                              icon: provider.isStartingSession
+                              icon: (provider.isStartingSession ||
+                                      (provider.isLoading && provider.classes.isEmpty))
                                   ? const SizedBox(
                                       width: 18,
                                       height: 18,
@@ -201,9 +224,11 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                               label: Text(
                                 provider.isStartingSession
                                     ? 'Đang khởi tạo phiên...'
-                                    : (provider.hasActiveSession
-                                        ? 'Phiên đang diễn ra'
-                                        : 'Bắt đầu phiên điểm danh'),
+                                    : (provider.isLoading && provider.classes.isEmpty)
+                                        ? 'Đang đồng bộ...'
+                                        : (provider.hasActiveSession
+                                            ? 'Phiên đang diễn ra'
+                                            : 'Bắt đầu phiên điểm danh'),
                                 style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -233,6 +258,8 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
   }
 
   Widget _buildClassDropdown(SessionProvider provider) {
+    final isLoadingClasses = provider.isLoading && provider.classes.isEmpty;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
@@ -244,7 +271,13 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
         child: DropdownButton<ClassModel>(
           isExpanded: true,
           value: provider.selectedClass,
-          hint: const Text('Chọn một lớp học'),
+          hint: Text(
+            isLoadingClasses
+                ? 'Đang tải danh sách lớp học...'
+                : (provider.classes.isEmpty
+                    ? 'Chưa có lớp học nào'
+                    : 'Chọn một lớp học'),
+          ),
           items: provider.classes.map((c) {
             return DropdownMenuItem<ClassModel>(
               value: c,
@@ -281,7 +314,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
               ),
             );
           }).toList(),
-          onChanged: provider.hasActiveSession
+          onChanged: (provider.hasActiveSession || isLoadingClasses)
               ? null
               : (newClass) => provider.selectClass(newClass),
         ),
