@@ -41,8 +41,8 @@ class AttendanceHistoryProvider extends ChangeNotifier {
   AttendanceHistoryProvider({
     AttendanceService? service,
     DateTime Function()? clock,
-  })  : _service = service ?? createConfiguredTeacherAttendanceService(),
-        _clock = clock ?? DateTime.now {
+  }) : _service = service ?? createConfiguredTeacherAttendanceService(),
+       _clock = clock ?? DateTime.now {
     final today = startOfDay(_clock());
     _toDate = today;
     _fromDate = today.subtract(const Duration(days: defaultRangeDays - 1));
@@ -70,6 +70,7 @@ class AttendanceHistoryProvider extends ChangeNotifier {
     try {
       _classes = await _service.getClasses();
     } catch (error) {
+      _isInitialized = false;
       _classes = const [];
       _status = HistoryDataStatus.unavailable;
       _errorMessage = _describe(error);
@@ -106,6 +107,7 @@ class AttendanceHistoryProvider extends ChangeNotifier {
   }
 
   Future<void> loadGroups() async {
+    if (!_isInitialized) return initialize();
     final token = ++_groupsToken;
     _status = HistoryDataStatus.loading;
     _errorMessage = null;
@@ -119,7 +121,9 @@ class AttendanceHistoryProvider extends ChangeNotifier {
       if (token != _groupsToken) return;
 
       final withinRange = sessions
-          .where((session) => isDateKeyWithin(session.slot.date, _fromDate, _toDate))
+          .where(
+            (session) => isDateKeyWithin(session.slot.date, _fromDate, _toDate),
+          )
           .toList();
       groups = SessionDayGroup.fromSessions(withinRange);
     } catch (error) {

@@ -22,19 +22,20 @@ var AttendanceDataService = (function (Repository) {
   };
 
   Service.prototype.getActiveSession = function () {
-    return this._repository.getActiveSession();
+    return this._settleAndRead(function () { return this._repository.getActiveSession(); });
   };
 
   Service.prototype.listSessions = function (filters) {
-    return this._repository.listSessions(filters);
+    return this._settleAndRead(function () { return this._repository.listSessions(filters); });
   };
 
   Service.prototype.getSessionResults = function (sessionId) {
-    return this._repository.getSessionResults(sessionId);
+    return this._settleAndRead(function () { return this._repository.getSessionResults(sessionId); });
   };
 
   Service.prototype.startSession = function (input) {
     return this._mutate(function () {
+      this._repository.finalizeReadySessions();
       return this._repository.startSession(input);
     });
   };
@@ -95,6 +96,13 @@ var AttendanceDataService = (function (Repository) {
 
   Service.prototype._mutate = function (callback) {
     return this._gateway.withLock(callback.bind(this));
+  };
+
+  Service.prototype._settleAndRead = function (callback) {
+    return this._mutate(function () {
+      this._repository.finalizeReadySessions();
+      return callback.call(this);
+    });
   };
 
   return {

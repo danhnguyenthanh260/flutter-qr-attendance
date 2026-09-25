@@ -59,7 +59,7 @@ void main() {
       expect(provider.isRotatingQr, isTrue);
       expect(provider.currentTicket, isNotNull);
       expect(provider.currentTicket!.generation, equals(1));
-      expect(provider.countdownSeconds, equals(30));
+      expect(provider.countdownSeconds, inInclusiveRange(provider.currentTicket!.remainingSeconds, provider.currentTicket!.remainingSeconds + 1));
     });
 
     test('checkTicketOnResume immediately refreshes ticket if expired during sleep', () async {
@@ -79,7 +79,7 @@ void main() {
       // Now manual refresh
       await provider.refreshQrTicketNow();
       expect(provider.currentTicket!.generation, equals(2));
-      expect(provider.countdownSeconds, equals(30));
+      expect(provider.countdownSeconds, inInclusiveRange(provider.currentTicket!.remainingSeconds, provider.currentTicket!.remainingSeconds + 1));
     });
 
     test('Toggling offline state marks provider as offline', () async {

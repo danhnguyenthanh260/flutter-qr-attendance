@@ -93,6 +93,11 @@ var AttendanceRepository = (function (Domain) {
       return record.status === 'active' || record.status === 'closing';
     });
     if (activeSession) {
+      if (activeSession.status === 'closing') {
+        Domain.fail('session_closing', 'Phiên trước đang chờ sinh viên đã quét gửi biểu mẫu. Vui lòng thử lại sau khi hết thời gian chờ.', {
+          session_id: activeSession.session_id,
+        });
+      }
       if (
         activeSession.class_id === classId &&
         Domain.asInteger(activeSession.slot_number, 'slot_number') === slotNumber &&
@@ -168,6 +173,12 @@ var AttendanceRepository = (function (Domain) {
       });
     }
 
+    if (this._hasPendingGrants(sessionId, this._records(Domain.SHEETS.grants))) {
+      Domain.fail('session_closing', 'The session still has unexpired attendance grants.', {
+        session_id: sessionId,
+      });
+    }
+
     var now = this._nowIso();
     var updated = this._gateway.update(Domain.SHEETS.sessions, entry.rowNumber, {
       status: 'closed',
@@ -175,6 +186,35 @@ var AttendanceRepository = (function (Domain) {
       updated_at: now,
     }).data;
     return this._toSession(updated);
+  };
+
+  // Called under the service lock on session reads and starts. No scheduled
+  // trigger is required: the next request settles abandoned closing sessions.
+  Repository.prototype.finalizeReadySessions = function () {
+    var closing = this._gateway.read(Domain.SHEETS.sessions).filter(function (entry) {
+      return entry.data.status === 'closing';
+    });
+    if (!closing.length) return;
+    var grants = this._records(Domain.SHEETS.grants);
+    var now = this._nowIso();
+    closing.forEach(function (entry) {
+      if (!this._hasPendingGrants(entry.data.session_id, grants)) {
+        this._gateway.update(Domain.SHEETS.sessions, entry.rowNumber, {
+          status: 'closed', closed_at: now, updated_at: now,
+        });
+      }
+    }, this);
+  };
+
+  Repository.prototype._hasPendingGrants = function (sessionId, grants) {
+    var now = this._clock().getTime();
+    return grants.some(function (grant) {
+      if (grant.session_id !== sessionId || grant.status !== 'issued') return false;
+      var deadline = new Date(grant.expires_at).getTime();
+      // Preserve the same inclusive expiry boundary as Form processing. A
+      // malformed expiry must not silently shorten a student's grace period.
+      return !Number.isFinite(deadline) || deadline >= now;
+    });
   };
 
   Repository.prototype.getActiveSession = function () {

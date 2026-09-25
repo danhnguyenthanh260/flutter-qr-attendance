@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
 import '../../core/config/app_config.dart';
+import '../../core/storage/catalog_storage.dart';
+import '../../core/utils/performance_log.dart';
 import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
@@ -72,6 +75,9 @@ AttendanceService createConfiguredTeacherAttendanceService() {
     endpoint: Uri.parse(AppConfig.teacherApiUrl),
     teacherKey: AppConfig.teacherApiKey,
     teacherId: AppConfig.teacherId,
+    catalogStorage: CatalogStorage.local(
+      '${AppConfig.teacherApiUrl}|${AppConfig.teacherId}|${AppConfig.teacherApiKey}',
+    ),
   );
 }
 
@@ -88,7 +94,13 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   final String _teacherId;
   final http.Client _client;
   final DateTime Function() _clock;
+  final CatalogStorage? catalogStorage;
+  final Duration requestTimeout;
+  final Map<String, Future<List<SessionSlot>>> _slotsInFlight = {};
+  final Map<String, ({DateTime saved, List<SessionSlot> items})> _slotsCache =
+      {};
   final Map<String, String> _pendingStartRequestIds = {};
+  final Map<String, Future<dynamic>> _readsInFlight = {};
   List<ClassModel>? _classesCache;
   DateTime? _classesCachedAt;
   Future<List<ClassModel>>? _classesInFlight;
@@ -99,6 +111,8 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     required String teacherId,
     http.Client? client,
     DateTime Function()? clock,
+    this.catalogStorage,
+    this.requestTimeout = const Duration(seconds: 25),
   }) : _endpoint = endpoint,
        _teacherKey = _requireValue(teacherKey, 'teacherKey'),
        _teacherId = _requireValue(teacherId, 'teacherId'),
@@ -141,12 +155,28 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   Future<List<ClassModel>> _loadClasses() async {
     try {
-      final data = await _get('classes');
-      final classes = _asList(data, 'classes')
+      var cached = await catalogStorage?.read('classes', _clock());
+      List<ClassModel> decode(dynamic data) => _asList(data, 'classes')
           .map((item) => ClassModel.fromJson(_asMap(item, 'class item')))
           .toList(growable: false);
+      List<ClassModel>? classes;
+      if (cached != null) {
+        try {
+          classes = decode(cached.items);
+        } catch (_) {
+          cached = null;
+        }
+      }
+      classes ??= decode(await _get('classes'));
       _classesCache = classes;
-      _classesCachedAt = _clock();
+      _classesCachedAt = cached?.saved ?? _clock();
+      if (cached == null) {
+        await catalogStorage?.write(
+          'classes',
+          classes.map((item) => item.toJson()).toList(),
+          _clock(),
+        );
+      }
       return classes;
     } finally {
       _classesInFlight = null;
@@ -155,10 +185,41 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   @override
   Future<List<SessionSlot>> getSlotsForClass(String classId) async {
-    final data = await _get('slots', query: {'class_id': classId});
-    return _asList(data, 'slots')
-        .map((item) => SessionSlot.fromJson(_asMap(item, 'slot item')))
-        .toList(growable: false);
+    final cached = _slotsCache[classId];
+    if (cached != null &&
+        _clock().difference(cached.saved) < _classesCacheTtl) {
+      return cached.items;
+    }
+    return _slotsInFlight[classId] ??= _loadSlots(classId);
+  }
+
+  Future<List<SessionSlot>> _loadSlots(String classId) async {
+    try {
+      var stored = await catalogStorage?.read('slots:$classId', _clock());
+      List<SessionSlot> decode(dynamic data) => _asList(data, 'slots')
+          .map((item) => SessionSlot.fromJson(_asMap(item, 'slot item')))
+          .toList(growable: false);
+      List<SessionSlot>? slots;
+      if (stored != null) {
+        try {
+          slots = decode(stored.items);
+        } catch (_) {
+          stored = null;
+        }
+      }
+      slots ??= decode(await _get('slots', query: {'class_id': classId}));
+      _slotsCache[classId] = (saved: stored?.saved ?? _clock(), items: slots);
+      if (stored == null) {
+        await catalogStorage?.write(
+          'slots:$classId',
+          slots.map((item) => item.toJson()).toList(),
+          _clock(),
+        );
+      }
+      return slots;
+    } finally {
+      _slotsInFlight.remove(classId);
+    }
   }
 
   @override
@@ -233,10 +294,20 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     );
   }
 
-  Future<dynamic> _get(
-    String action, {
-    Map<String, String> query = const {},
-  }) async {
+  Future<dynamic> _get(String action, {Map<String, String> query = const {}}) {
+    final keys = query.keys.toList()..sort();
+    final key = jsonEncode([
+      action,
+      {for (final name in keys) name: query[name]},
+    ]);
+    return _readsInFlight[key] ??= _getOnce(action, query).whenComplete(() {
+      _readsInFlight.remove(key);
+    });
+  }
+
+  Future<dynamic> _getOnce(String action, Map<String, String> query) async {
+    final timer = Stopwatch()..start();
+    PerformanceLog.mark('api_start', {'action': action});
     final uri = _endpoint.replace(
       queryParameters: {
         ..._endpoint.queryParameters,
@@ -245,8 +316,24 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
         ...query,
       },
     );
-    final response = await _getAppsScriptResponse(uri);
-    return _decodeEnvelope(response, action);
+    try {
+      final response = await _withDeadline(
+        _getAppsScriptResponse(uri),
+        mutation: false,
+      );
+      final data = _decodeEnvelope(response, action);
+      PerformanceLog.mark('api_done', {
+        'action': action,
+        'ms': timer.elapsedMilliseconds,
+      });
+      return data;
+    } catch (_) {
+      PerformanceLog.mark('api_failed', {
+        'action': action,
+        'ms': timer.elapsedMilliseconds,
+      });
+      rethrow;
+    }
   }
 
   /// Prevent the platform HTTP client from automatically following Apps
@@ -255,6 +342,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   /// the same trusted-host check as POST requests.
   Future<http.Response> _getAppsScriptResponse(Uri uri) async {
     final request = http.Request('GET', uri)
+      ..persistentConnection = false
       ..followRedirects = false
       ..maxRedirects = 0;
     final initialResponse = await http.Response.fromStream(
@@ -264,7 +352,28 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
   }
 
   Future<dynamic> _post(String action, Map<String, dynamic> body) async {
+    return _withDeadline(_postOnce(action, body), mutation: true);
+  }
+
+  Future<T> _withDeadline<T>(
+    Future<T> operation, {
+    required bool mutation,
+  }) async {
+    try {
+      return await operation.timeout(requestTimeout);
+    } on TimeoutException {
+      throw TeacherApiException(
+        code: mutation ? 'operation_unconfirmed' : 'request_timeout',
+        message: mutation
+            ? 'Máy chủ chưa xác nhận thao tác. Hãy kiểm tra lại trạng thái phiên trước khi thử lại.'
+            : 'Máy chủ phản hồi quá lâu. Vui lòng thử tải lại dữ liệu.',
+      );
+    }
+  }
+
+  Future<dynamic> _postOnce(String action, Map<String, dynamic> body) async {
     final request = http.Request('POST', _endpoint)
+      ..persistentConnection = false
       ..followRedirects = false
       ..maxRedirects = 0
       ..headers['content-type'] = 'application/json'
@@ -340,6 +449,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
 
   Future<http.Response> _getWithoutRedirect(Uri uri) async {
     final request = http.Request('GET', uri)
+      ..persistentConnection = false
       ..followRedirects = false
       ..maxRedirects = 0;
     return http.Response.fromStream(await _client.send(request));

@@ -329,6 +329,56 @@ test('preserves the closing state until a later finalization step', () => {
   assert.equal(closed.status, 'closed');
 });
 
+test('start settles abandoned closing sessions and creates a fresh active session', () => {
+  const { service, gateway } = createFixture();
+  const first = service.startSession(startInput());
+  service.requestCloseSession(first.id);
+  const next = service.startSession(startInput({ request_id: 'START_NEW' }));
+  assert.notEqual(next.id, first.id);
+  assert.equal(next.status, 'active');
+  assert.equal(gateway.rows(Domain.SHEETS.sessions)[0].status, 'closed');
+  assert.equal(service.issueQrTicket({ session_id: next.id, valid_seconds: 30 }).session_id, next.id);
+});
+
+test('closing preserves outstanding grants, blocks new starts, and settles after submission', () => {
+  const { service, setNow } = createFixture();
+  const first = service.startSession(startInput());
+  const ticket = service.issueQrTicket({ session_id: first.id, valid_seconds: 30 });
+  const grant = service.claimQrTicket({ ticket_id: ticket.ticket_id, grace_seconds: 120 });
+  service.requestCloseSession(first.id);
+  setNow('2026-09-19T08:00:40.000Z');
+  assert.throws(() => service.startSession(startInput({ request_id: 'NEXT' })),
+    error => error.code === 'session_closing');
+  assert.throws(() => service.finalizeSession(first.id), error => error.code === 'session_closing');
+  assert.equal(service.getSessionResults(first.id).session.status, 'closing');
+  assert.equal(service.processFormSubmission({
+    form_response_id: 'CLOSING_FORM', grant_id: grant.grant_id,
+    email: 'student@example.edu', submitted_at: '2026-09-19T08:00:40.000Z',
+  }).accepted, true);
+  assert.equal(service.getSessionResults(first.id).session.status, 'closed');
+  const next = service.startSession(startInput({ request_id: 'NEXT' }));
+  assert.notEqual(next.id, first.id);
+});
+
+test('reads finalize after the last issued grant expires, never at its valid boundary', () => {
+  const { service, setNow } = createFixture();
+  const first = service.startSession(startInput());
+  const ticket = service.issueQrTicket({ session_id: first.id, valid_seconds: 30 });
+  service.claimQrTicket({ ticket_id: ticket.ticket_id, grace_seconds: 120 });
+  setNow('2026-09-19T08:00:20.000Z');
+  service.claimQrTicket({ ticket_id: ticket.ticket_id, grace_seconds: 120 });
+  service.requestCloseSession(first.id);
+  setNow('2026-09-19T08:02:00.001Z');
+  assert.equal(service.listSessions()[0].status, 'closing');
+  setNow('2026-09-19T08:02:20.000Z');
+  assert.equal(service.listSessions()[0].status, 'closing');
+  setNow('2026-09-19T08:02:20.001Z');
+  assert.equal(service.getActiveSession(), null);
+  assert.equal(service.listSessions()[0].status, 'closed');
+  assert.equal(service.startSession(startInput()).status, 'closed'); // idempotency: old request stays old
+  assert.equal(service.startSession(startInput({ request_id: 'NEW' })).status, 'active');
+});
+
 test('teacher API requires the configured key and returns typed data envelopes', () => {
   const { service } = createFixture();
   const context = {

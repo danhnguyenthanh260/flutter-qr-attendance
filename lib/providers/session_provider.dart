@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/storage/session_storage.dart';
+import '../core/utils/performance_log.dart';
 import '../data/models/class_model.dart';
 import '../data/models/qr_ticket_model.dart';
 import '../data/models/session_model.dart';
 import '../data/services/attendance_service.dart';
+import '../data/services/attendance_api_exception.dart';
 import '../data/services/google_apps_script_attendance_service.dart';
 
 class SessionProvider extends ChangeNotifier {
@@ -26,6 +28,11 @@ class SessionProvider extends ChangeNotifier {
   AttendanceSession? _activeSession;
 
   bool _isLoading = false;
+  bool _isLoadingSlots = false;
+  bool _isRestoringSession = false;
+  bool _sessionVerified = false;
+  Future<void>? _startup;
+  int _slotRequest = 0;
   bool _isStartingSession = false;
   bool _isClosingSession = false;
   String? _errorMessage;
@@ -36,6 +43,8 @@ class SessionProvider extends ChangeNotifier {
   Timer? _qrTimer;
   bool _isRotatingQr = false;
   bool _isOffline = false;
+  bool _ticketRequestPending = false;
+  int _qrEpoch = 0;
 
   // Getters
   List<ClassModel> get classes => _classes;
@@ -44,6 +53,13 @@ class SessionProvider extends ChangeNotifier {
   SessionSlot? get selectedSlot => _selectedSlot;
   AttendanceSession? get activeSession => _activeSession;
   bool get isLoading => _isLoading;
+  bool get isLoadingSlots => _isLoadingSlots;
+  bool get isRestoringSession => _isRestoringSession;
+  bool get canStartSession =>
+      _sessionVerified &&
+      !_isRestoringSession &&
+      !_isLoadingSlots &&
+      _selectedSlot != null;
   bool get isStartingSession => _isStartingSession;
   bool get isClosingSession => _isClosingSession;
   String? get errorMessage => _errorMessage;
@@ -56,22 +72,42 @@ class SessionProvider extends ChangeNotifier {
   bool get isOffline => _isOffline;
 
   // Load initial classes and restore session state (Issue #21)
-  Future<void> loadInitialData() async {
+  Future<void> loadInitialData() => _startup ??= _loadInitialData();
+
+  Future<void> _loadInitialData() async {
     _isLoading = true;
+    _isRestoringSession = true;
+    _sessionVerified = false;
     _errorMessage = null;
     notifyListeners();
-
+    final recovery = _recoverSession();
     try {
       _classes = await _service.getClasses();
-      final startupWork = <Future<void>>[_restoreActiveSession()];
+      PerformanceLog.mark('classes_ready', {'count': _classes.length});
+      _isLoading = false;
+      notifyListeners();
       if (_classes.isNotEmpty) {
-        startupWork.add(selectClass(_classes.first));
+        await selectClass(_selectedClass ?? _classes.first);
       }
-      await Future.wait(startupWork);
     } catch (e) {
       _errorMessage = 'Không thể tải dữ liệu phiên: $e';
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+    await recovery;
+    _startup = null;
+  }
+
+  Future<void> _recoverSession() async {
+    try {
+      await _restoreActiveSession();
+      _sessionVerified = true;
+      PerformanceLog.mark('session_verified', {'active': hasActiveSession});
+    } catch (e) {
+      _errorMessage = 'Chưa xác minh được phiên trên máy chủ: $e';
+    } finally {
+      _isRestoringSession = false;
       notifyListeners();
     }
   }
@@ -90,7 +126,7 @@ class SessionProvider extends ChangeNotifier {
     if (serverSession != null && serverSession.status == SessionStatus.active) {
       _activeSession = serverSession;
       await _storage.saveActiveSession(serverSession);
-      await startQrRotation();
+      unawaited(startQrRotation());
     } else if (cachedSession != null) {
       // Cache exists but server is not active or closed -> clear cache, no reopening.
       await _storage.clearActiveSession();
@@ -107,16 +143,24 @@ class SessionProvider extends ChangeNotifier {
     _selectedClass = classModel;
     _slots = [];
     _selectedSlot = null;
+    final request = ++_slotRequest;
+    _isLoadingSlots = classModel != null;
     notifyListeners();
 
     if (classModel != null) {
       try {
-        _slots = await _service.getSlotsForClass(classModel.id);
+        final slots = await _service.getSlotsForClass(classModel.id);
+        if (request != _slotRequest || _isDisposed) return;
+        _slots = slots;
+        PerformanceLog.mark('slots_ready', {'count': slots.length});
         if (_slots.isNotEmpty) {
           _selectedSlot = _slots.first;
         }
       } catch (e) {
+        if (request != _slotRequest || _isDisposed) return;
         _errorMessage = 'Không thể tải ca học: $e';
+      } finally {
+        if (request == _slotRequest) _isLoadingSlots = false;
       }
       notifyListeners();
     }
@@ -138,6 +182,7 @@ class SessionProvider extends ChangeNotifier {
     if (hasActiveSession) {
       return true;
     }
+    if (!canStartSession) return false;
 
     if (_selectedClass == null || _selectedSlot == null) {
       _errorMessage = 'Vui lòng chọn đầy đủ Lớp học và Ca học';
@@ -154,12 +199,24 @@ class SessionProvider extends ChangeNotifier {
         classId: _selectedClass!.id,
         slot: _selectedSlot!,
       );
+      if (session.status != SessionStatus.active) {
+        stopQrRotation();
+        _activeSession = null;
+        _currentTicket = null;
+        await _storage.clearActiveSession();
+        _isStartingSession = false;
+        _errorMessage = session.status == SessionStatus.closing
+            ? 'Phiên trước đang kết thúc và chờ các lượt đã quét gửi biểu mẫu. Vui lòng thử lại sau.'
+            : 'Phiên này đã kết thúc. Vui lòng bắt đầu một phiên mới.';
+        notifyListeners();
+        return false;
+      }
       _activeSession = session;
       await _storage.saveActiveSession(session);
       _isStartingSession = false;
       await startQrRotation();
       notifyListeners();
-      return true;
+      return hasActiveSession;
     } catch (e) {
       _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _isStartingSession = false;
@@ -170,11 +227,13 @@ class SessionProvider extends ChangeNotifier {
 
   // QR 30-second Countdown & Rotation (Issue #10)
   Future<void> startQrRotation() async {
-    if (_activeSession == null) return;
+    if (!hasActiveSession || _isClosingSession || _isDisposed) return;
     _isRotatingQr = true;
     _qrTimer?.cancel();
+    final epoch = ++_qrEpoch;
 
     await _fetchNewTicket();
+    if (epoch != _qrEpoch || !hasActiveSession || _isDisposed) return;
 
     _qrTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (_isOffline) return;
@@ -189,16 +248,35 @@ class SessionProvider extends ChangeNotifier {
   }
 
   Future<void> _fetchNewTicket() async {
-    if (_activeSession == null) return;
+    if (!hasActiveSession || _isClosingSession || _ticketRequestPending) return;
+    final epoch = _qrEpoch;
+    final sessionId = _activeSession!.id;
+    _ticketRequestPending = true;
     try {
-      _currentTicket = await _service.getNextQrTicket(_activeSession!.id);
-      _countdownSeconds = 30;
+      final ticket = await _service.getNextQrTicket(sessionId);
+      if (epoch != _qrEpoch || _isDisposed) return;
+      _currentTicket = ticket;
+      _countdownSeconds = ticket.remainingSeconds;
       _isOffline = false;
+      _errorMessage = null;
       notifyListeners();
     } catch (e) {
+      if (epoch != _qrEpoch || _isDisposed) return;
+      if (e is AttendanceApiException && e.code == 'session_not_active') {
+        stopQrRotation();
+        _activeSession = null;
+        _currentTicket = null;
+        _isOffline = false;
+        await _storage.clearActiveSession();
+        _errorMessage = 'Phiên điểm danh đã ngừng nhận lượt quét mới. Vui lòng bắt đầu phiên mới khi phiên trước kết thúc.';
+        notifyListeners();
+        return;
+      }
       _isOffline = true;
       _errorMessage = 'Không thể làm mới mã QR: $e';
       notifyListeners();
+    } finally {
+      _ticketRequestPending = false;
     }
   }
 
@@ -208,6 +286,7 @@ class SessionProvider extends ChangeNotifier {
   }
 
   void stopQrRotation() {
+    _qrEpoch++;
     _qrTimer?.cancel();
     _isRotatingQr = false;
   }
@@ -287,7 +366,7 @@ class SessionProvider extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
-    _qrTimer?.cancel();
+    stopQrRotation();
     super.dispose();
   }
 }

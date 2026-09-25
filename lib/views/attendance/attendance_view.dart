@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/attendance_results_provider.dart';
 
 import '../../core/constants/app_colors.dart';
 import 'history_attendance_view.dart';
 import 'today_attendance_view.dart';
 
 class AttendanceView extends StatefulWidget {
-  const AttendanceView({super.key});
+  final bool active;
+  const AttendanceView({super.key, this.active = true});
 
   @override
   State<AttendanceView> createState() => _AttendanceViewState();
@@ -15,12 +19,35 @@ class _AttendanceViewState extends State<AttendanceView> {
   final Set<int> _visitedTabs = {0};
   int _selectedIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    _syncVisibility();
+  }
+
+  @override
+  void didUpdateWidget(covariant AttendanceView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) _syncVisibility();
+  }
+
+  void _syncVisibility() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<AttendanceResultsProvider>().setVisible(
+          widget.active && _selectedIndex == 0,
+        );
+      }
+    });
+  }
+
   void _select(int index) {
     if (_selectedIndex == index) return;
     setState(() {
       _selectedIndex = index;
       _visitedTabs.add(index);
     });
+    _syncVisibility();
   }
 
   @override
@@ -108,8 +135,9 @@ class _TabButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color:
-                      isSelected ? AppColors.primary : AppColors.textSecondary,
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.textSecondary,
                 ),
               ),
             ],

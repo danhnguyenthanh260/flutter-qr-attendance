@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
+import '../../core/utils/performance_log.dart';
 import '../attendance/attendance_view.dart';
 import '../ai_assistant/ai_assistant_placeholder_view.dart';
 import '../session/session_selection_view.dart';
+import '../roster/roster_preview_view.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -15,17 +18,13 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
-
-  final List<Widget> _views = const [
-    SessionSelectionView(),
-    AttendanceView(),
-    AiAssistantPlaceholderView(),
-  ];
+  final Set<int> _visited = {0};
 
   final List<String> _titles = const [
     'Quản lý phiên điểm danh & Trình chiếu QR',
     'Bảng điểm danh & Lịch sử buổi học',
     'Trợ lý AI & Báo cáo chuyên cần',
+    'Danh sách lớp từ file',
   ];
 
   @override
@@ -46,7 +45,10 @@ class _AppShellState extends State<AppShell> {
               children: [
                 // App Brand / Header
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 20.0,
+                  ),
                   child: Row(
                     children: [
                       Container(
@@ -111,6 +113,12 @@ class _AppShellState extends State<AppShell> {
                   label: 'Trợ lý AI & Báo cáo',
                   badgeText: 'Người 5',
                 ),
+                _buildNavItem(
+                  index: 3,
+                  icon: Icons.table_view_outlined,
+                  label: 'Dữ liệu lớp',
+                  badgeText: 'Xem trước',
+                ),
 
                 const Spacer(),
 
@@ -138,7 +146,7 @@ class _AppShellState extends State<AppShell> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Hệ thống kết nối',
+                              'QR Attendance · 1.1.0',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,
@@ -146,7 +154,7 @@ class _AppShellState extends State<AppShell> {
                               ),
                             ),
                             Text(
-                              'Apps Script / Sheets sẵn sàng',
+                              'Phiên được xác minh qua máy chủ',
                               style: TextStyle(
                                 color: AppColors.textMuted,
                                 fontSize: 11,
@@ -259,7 +267,21 @@ class _AppShellState extends State<AppShell> {
 
                 // Content View
                 Expanded(
-                  child: _views[_selectedIndex],
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: [
+                      const SessionSelectionView(),
+                      _visited.contains(1)
+                          ? AttendanceView(active: _selectedIndex == 1)
+                          : const SizedBox.shrink(),
+                      _visited.contains(2)
+                          ? const AiAssistantPlaceholderView()
+                          : const SizedBox.shrink(),
+                      _visited.contains(3)
+                          ? const RosterPreviewView()
+                          : const SizedBox.shrink(),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -282,7 +304,11 @@ class _AppShellState extends State<AppShell> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => setState(() => _selectedIndex = index),
+          onTap: () => setState(() {
+            _selectedIndex = index;
+            _visited.add(index);
+            PerformanceLog.mark('navigate', {'tab': index});
+          }),
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -302,14 +328,21 @@ class _AppShellState extends State<AppShell> {
                   child: Text(
                     label,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : const Color(0xFFCBD5E1),
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFFCBD5E1),
                       fontSize: 14,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.w400,
                     ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? Colors.white.withValues(alpha: 0.2)

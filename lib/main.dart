@@ -4,6 +4,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
 import 'core/constants/app_colors.dart';
+import 'core/utils/performance_log.dart';
 import 'data/services/attendance_service.dart';
 import 'data/services/google_apps_script_attendance_service.dart';
 import 'providers/attendance_history_provider.dart';
@@ -12,7 +13,11 @@ import 'providers/session_provider.dart';
 import 'views/shell/app_shell.dart';
 
 void main() async {
+  PerformanceLog.mark('startup');
   WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => PerformanceLog.mark('first_frame'),
+  );
   await initializeDateFormatting('vi_VN', null);
 
   final AttendanceService attendanceService =

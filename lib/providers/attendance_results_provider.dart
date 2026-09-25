@@ -44,6 +44,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
   bool _isInitialized = false;
   bool _isRefreshing = false;
   bool _autoRefreshEnabled;
+  bool _visible = true;
   bool _isDisposed = false;
 
   Timer? _refreshTimer;
@@ -91,6 +92,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
     try {
       _classes = await _service.getClasses();
     } catch (error) {
+      _isInitialized = false;
       _classes = const [];
       _status = AttendanceDataStatus.unavailable;
       _errorMessage = _describe(error);
@@ -135,6 +137,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    if (!_isInitialized) return initialize();
     if (_selectedSession == null) {
       await _reloadScope();
       return;
@@ -153,6 +156,20 @@ class AttendanceResultsProvider extends ChangeNotifier {
       _cancelTimer();
     }
     _notify();
+  }
+
+  void setVisible(bool visible) {
+    if (_visible == visible) return;
+    _visible = visible;
+    _cancelTimer();
+    if (!visible || !_isInitialized) return;
+    final updated = _lastUpdatedAt;
+    if (canAutoRefresh &&
+        (updated == null || _clock().difference(updated) >= refreshInterval)) {
+      unawaited(refresh());
+    } else {
+      _scheduleNextRefresh();
+    }
   }
 
   void clearRefreshError() {
@@ -316,7 +333,9 @@ class AttendanceResultsProvider extends ChangeNotifier {
 
   void _scheduleNextRefresh() {
     _cancelTimer();
-    if (!_autoRefreshEnabled || !canAutoRefresh) return;
+    if (!_visible || !_autoRefreshEnabled || !canAutoRefresh || _isDisposed) {
+      return;
+    }
     _refreshTimer = Timer(refreshInterval, refresh);
   }
 

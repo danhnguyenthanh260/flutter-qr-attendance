@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_typography.dart';
 import '../../core/utils/debouncer.dart';
@@ -68,27 +69,31 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
           );
         }
 
-        if (provider.isLoading) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(color: AppColors.primary),
-                SizedBox(height: 16),
-                Text(
-                  'Đang tải thông tin lớp học...',
-                  style: AppTypography.bodySecondary,
-                ),
-              ],
-            ),
-          );
-        }
-
         return SingleChildScrollView(
           padding: const EdgeInsets.all(28),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (provider.isLoading || provider.isRestoringSession) ...[
+                const LinearProgressIndicator(),
+                const SizedBox(height: 8),
+                Text(
+                  provider.isLoading
+                      ? 'Đang tải danh sách lớp. Bạn vẫn có thể mở các mục khác.'
+                      : 'Đã có danh sách lớp. Đang xác minh phiên trên máy chủ…',
+                ),
+                const SizedBox(height: 16),
+              ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: provider.isLoading || provider.isRestoringSession
+                      ? null
+                      : provider.loadInitialData,
+                  icon: const Icon(Icons.sync),
+                  label: const Text('Kiểm tra lại phiên'),
+                ),
+              ),
               // Error banner if any
               if (provider.errorMessage != null) ...[
                 Container(
@@ -97,7 +102,9 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                   decoration: BoxDecoration(
                     color: AppColors.errorBg,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: AppColors.error.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -110,7 +117,11 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close, size: 18, color: AppColors.error),
+                        icon: const Icon(
+                          Icons.close,
+                          size: 18,
+                          color: AppColors.error,
+                        ),
                         onPressed: provider.clearError,
                       ),
                     ],
@@ -185,7 +196,10 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                                 ),
                                 elevation: 0,
                               ),
-                              onPressed: (provider.isStartingSession || provider.hasActiveSession)
+                              onPressed:
+                                  (provider.isStartingSession ||
+                                      provider.hasActiveSession ||
+                                      !provider.canStartSession)
                                   ? null
                                   : () => _handleStartSession(provider),
                               icon: provider.isStartingSession
@@ -197,13 +211,16 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                                         color: Colors.white,
                                       ),
                                     )
-                                  : const Icon(Icons.play_arrow_rounded, size: 22),
+                                  : const Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 22,
+                                    ),
                               label: Text(
                                 provider.isStartingSession
                                     ? 'Đang khởi tạo phiên...'
                                     : (provider.hasActiveSession
-                                        ? 'Phiên đang diễn ra'
-                                        : 'Bắt đầu phiên điểm danh'),
+                                          ? 'Phiên đang diễn ra'
+                                          : 'Bắt đầu phiên điểm danh'),
                                 style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
@@ -219,10 +236,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                   const SizedBox(width: 24),
 
                   // Right Info & Summary Card
-                  Expanded(
-                    flex: 2,
-                    child: _buildSummaryCard(provider),
-                  ),
+                  Expanded(flex: 2, child: _buildSummaryCard(provider)),
                 ],
               ),
             ],
@@ -251,7 +265,10 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primaryLight,
                       borderRadius: BorderRadius.circular(6),
@@ -273,10 +290,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Text(
-                    '${c.totalStudents} SV',
-                    style: AppTypography.caption,
-                  ),
+                  Text('${c.totalStudents} SV', style: AppTypography.caption),
                 ],
               ),
             );
@@ -290,6 +304,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
   }
 
   Widget _buildSlotSelector(SessionProvider provider) {
+    if (provider.isLoadingSlots) return const Text('Đang tải ca học…');
     if (provider.slots.isEmpty) {
       return const Text(
         'Vui lòng chọn lớp học để xem ca học',
@@ -311,7 +326,9 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
             width: 150,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isSelected ? AppColors.primaryLight : AppColors.surfaceVariant,
+              color: isSelected
+                  ? AppColors.primaryLight
+                  : AppColors.surfaceVariant,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                 color: isSelected ? AppColors.primary : AppColors.border,
@@ -328,19 +345,27 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.textPrimary,
                       ),
                     ),
                     const Spacer(),
                     if (isSelected)
-                      const Icon(Icons.check_circle, size: 16, color: AppColors.primary),
+                      const Icon(
+                        Icons.check_circle,
+                        size: 16,
+                        color: AppColors.primary,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   slot.timeRange,
                   style: AppTypography.caption.copyWith(
-                    color: isSelected ? AppColors.primary : AppColors.textSecondary,
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
                   ),
                 ),
               ],
@@ -365,10 +390,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Thông tin ca giảng dạy',
-            style: AppTypography.heading3,
-          ),
+          const Text('Thông tin ca giảng dạy', style: AppTypography.heading3),
           const SizedBox(height: 16),
           const Divider(height: 1, color: AppColors.border),
           const SizedBox(height: 16),
@@ -411,7 +433,8 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
             _buildInfoRow(
               icon: Icons.access_time_rounded,
               label: 'Khung giờ ca:',
-              value: 'Ca ${selectedSlot.slotNumber} (${selectedSlot.timeRange})',
+              value:
+                  'Ca ${selectedSlot.slotNumber} (${selectedSlot.timeRange})',
             ),
           ],
 
@@ -425,12 +448,19 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
             child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.info_outline, size: 18, color: AppColors.textSecondary),
+                Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Khi bấm "Bắt đầu phiên", mã QR sẽ tự động được sinh và xoay vòng mỗi 30 giây (chuẩn bị cho Issue #10).',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ],
@@ -478,7 +508,10 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
                     ),
                     const SizedBox(width: 10),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.success.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
@@ -535,15 +568,14 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
         const SizedBox(width: 10),
         SizedBox(
           width: 120,
-          child: Text(
-            label,
-            style: AppTypography.bodySecondary,
-          ),
+          child: Text(label, style: AppTypography.bodySecondary),
         ),
         Expanded(
           child: Text(
             value,
-            style: AppTypography.bodyRegular.copyWith(fontWeight: FontWeight.w600),
+            style: AppTypography.bodyRegular.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
