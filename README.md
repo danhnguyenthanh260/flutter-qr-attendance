@@ -1,10 +1,18 @@
 # QR Attendance - Hệ Thống Điểm Danh Sinh Viên Thông Minh
 
+## Tài liệu và hiện trạng ngày 25/09/2026
+
+- [Dữ liệu lớp mới và phần có thể triển khai](docs/source-data-and-scope.md): 66 dòng roster; nguồn lịch/P-A còn thiếu.
+- [Contract điểm danh và dữ liệu lớp](docs/contracts.md): phần đang có và phần cần bổ sung.
+- [Khởi động và chuyển màn hình](docs/performance-and-navigation.md): người dùng báo khởi động ít nhất 30 giây; cần nghiệm thu cả màn hình, không chỉ từng API.
+- [Chat và báo cáo chuyên cần](docs/ai-reporting-requirements.md): nhánh AI chưa tích hợp; phải bỏ số vắng tạo từ hash email trước khi dùng dữ liệu thật.
+
+Main đã có phiên/QR, bảng hôm nay và lịch sử; không đồng nghĩa đã nghiệm thu toàn bộ luồng trên deployment đang chạy. Hai roster mới chưa được nhập vào Sheet thật. Các mục giới thiệu bên dưới mô tả định hướng sản phẩm; hiện trạng và các giới hạn cụ thể nằm trong bộ tài liệu trên.
+
 <p align="center">
   <img src="https://img.shields.io/badge/Flutter-3.47.4-blue.svg?logo=flutter" alt="Flutter Version" />
   <img src="https://img.shields.io/badge/Platform-Windows%20Desktop-0078D6.svg?logo=windows" alt="Platform" />
   <img src="https://img.shields.io/badge/Dart-3.13.3-0175C2.svg?logo=dart" alt="Dart Version" />
-  <img src="https://img.shields.io/badge/Tests-10%2F10%20Passed-success.svg" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License" />
 </p>
 
@@ -161,7 +169,7 @@ flutter run -d windows
 ```bash
 flutter test
 ```
-*(Kết quả kỳ vọng: `All tests passed! (10/10)`).*
+Số test thay đổi theo revision. Ghi kết quả và commit thực tế khi chạy; không dùng số test cũ làm bằng chứng nghiệm thu bản hiện tại.
 
 ### 3. Kiểm tra chất lượng mã nguồn (Static Code Analysis)
 ```bash
