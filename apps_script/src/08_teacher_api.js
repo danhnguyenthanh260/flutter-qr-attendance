@@ -50,7 +50,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
             service,
             context.studentConfig,
             Domain.requireString(payload.session_id, 'session_id'),
-            payload.request_id
+            payload.request_id,
+            context.formGateway
           ));
         default:
           Domain.fail('unknown_action', 'Unsupported POST action.', { action: action });
@@ -93,6 +94,7 @@ function createTeacherApiResponse_(method, payload) {
     var context = AttendanceConfig.createLiveContext();
     if (payload.action === 'issue_qr') {
       context.studentConfig = AttendanceConfig.getStudentFlowConfig();
+      context.formGateway = AttendanceFormGateway;
     }
     envelope = TeacherApiContract.execute(method, payload, context);
   } catch (error) {

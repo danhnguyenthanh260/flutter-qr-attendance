@@ -1,15 +1,20 @@
 var StudentAttendanceService = (function (Domain) {
   'use strict';
 
-  function issueQrTicket(service, config, sessionId, requestId) {
+  function issueQrTicket(service, config, sessionId, requestId, formGateway) {
     var ticket = service.issueQrTicket({
       session_id: Domain.requireString(sessionId, 'session_id'),
       valid_seconds: config.qrValidSeconds,
       request_id: requestId,
+      direct_form: config.directForm === true,
     });
     return {
       ticket_code: ticket.ticket_id,
-      form_url: buildClaimUrl(config.webAppUrl, ticket.ticket_id),
+      form_url: ticket.submission_token
+        ? formGateway.createPrefilledUrl(config, ticket.submission_token)
+        : buildClaimUrl(config.webAppUrl, ticket.ticket_id),
+      flow: ticket.submission_token ? 'direct_form' : 'claim',
+      submission_window_seconds: ticket.submission_token ? 120 : null,
       generation: ticket.generation,
       valid_seconds: config.qrValidSeconds,
       created_at: ticket.issued_at,

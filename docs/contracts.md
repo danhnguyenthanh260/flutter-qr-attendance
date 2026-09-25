@@ -1,5 +1,9 @@
 # Contract điểm danh và dữ liệu lớp
 
+## Cập nhật deployment v15 (25/09/2026)
+
+Người dùng đã duyệt QR mở thẳng Google Form: mã đổi mỗi 30 giây, hạn nộp 120 giây từ lúc phát hành, xét timestamp của Google Form. Giữ email xác thực, roster, chống trùng và tương thích grant cũ. Chi tiết, bằng chứng kiểm thử và giới hạn nghiệm thu tại [Direct Form QR](direct-form-qr.md). Phần dưới ghi nhận baseline trước thay đổi này.
+
 Cập nhật 25/09/2026. Phân biệt rõ contract đang có trong main `842e29d` và phần cần bổ sung; không coi issue đã đóng là bằng chứng mọi tiêu chí đã đạt.
 
 ## Đang có trong source

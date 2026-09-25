@@ -33,6 +33,7 @@ var AttendanceConfig = (function (Domain, Gateway, DataService) {
       webAppUrl: requireScriptProperty_(properties, 'ATTENDANCE_WEB_APP_URL'),
       graceSeconds: graceSeconds,
       qrValidSeconds: 30,
+      directForm: true,
     };
   }
 

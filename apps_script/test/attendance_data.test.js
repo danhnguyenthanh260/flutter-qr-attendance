@@ -479,4 +479,128 @@ test('teacher API issues a server-side QR claim URL only with teacher authentica
   assert.match(result.data.form_url, /route=claim/);
   assert.equal(result.data.valid_seconds, 30);
 });
+function directFixture() {
+  const fixture = createFixture();
+  fixture.gateway.seed(Domain.SHEETS.roster, {roster_id: 'R_SECOND', class_id: 'CLASS_1',
+    email: 'second@example.edu', email_key: 'second@example.edu', student_name: 'Second', is_active: 'true'});
+  const session = fixture.service.startSession(startInput());
+  const ticket = fixture.service.issueQrTicket({session_id: session.id, valid_seconds: 30,
+    direct_form: true, request_id: 'direct_request_123456'});
+  return {...fixture, session, ticket};
+}
+
+function directSubmission(ticket, overrides = {}) {
+  return {form_response_id: 'DIRECT_RESPONSE', grant_id: ticket.submission_token,
+    email: 'second@example.edu', submitted_at: '2026-09-19T08:00:40.000Z', ...overrides};
+}
+
+test('direct QR links to the prefilled Form without any Apps Script intermediary', () => {
+  const {service, session} = directFixture();
+  const response = StudentAttendanceService.issueQrTicket(service,
+    {directForm: true, qrValidSeconds: 30}, session.id, 'direct_other_123456', {
+      createPrefilledUrl: (_, token) => 'https://docs.google.com/forms/d/e/test/viewform?entry.1=' + token,
+    });
+  assert.match(response.form_url, /^https:\/\/docs.google.com\/forms\//);
+  assert.doesNotMatch(response.form_url, /route=claim|script.google/);
+  assert.equal(response.flow, 'direct_form');
+  assert.equal(response.submission_window_seconds, 120);
+  assert.equal(response.valid_seconds, 30);
+});
+
+test('direct shared code accepts multiple roster students, rejects duplicate email and trigger replay', () => {
+  const {service, gateway, ticket, setNow} = directFixture();
+  gateway.seed(Domain.SHEETS.roster, {roster_id: 'R_THIRD', class_id: 'CLASS_1',
+    email: 'third@example.edu', email_key: 'third@example.edu', student_name: 'Third', is_active: 'true'});
+  setNow('2026-09-19T08:01:00Z');
+  const input = directSubmission(ticket);
+  assert.equal(service.processFormSubmission(input).accepted, true);
+  assert.equal(service.processFormSubmission(input).replayed, true);
+  assert.equal(service.processFormSubmission({...input, form_response_id: 'THIRD', email: 'third@example.edu'}).accepted, true);
+  assert.equal(service.processFormSubmission({...input, form_response_id: 'DUP'}).outcome, 'duplicate');
+  assert.equal(gateway.rows(Domain.SHEETS.attendance).length, 2);
+  assert.equal(gateway.rows(Domain.SHEETS.grants)[0].status, 'direct');
+});
+
+test('direct submission deadline uses trusted submit time, inclusive at 120 seconds; late trigger can follow finalization', () => {
+  const {service, ticket, session, setNow} = directFixture();
+  service.requestCloseSession(session.id);
+  setNow('2026-09-19T08:02:00Z');
+  assert.equal(service.listSessions({})[0].status, 'closing');
+  setNow('2026-09-19T08:02:01Z');
+  assert.equal(service.listSessions({})[0].status, 'closed');
+  setNow('2026-09-19T08:05:00Z');
+  assert.equal(service.processFormSubmission(directSubmission(ticket, {submitted_at: '2026-09-19T08:02:00Z'})).accepted, true);
+  assert.equal(service.processFormSubmission(directSubmission(ticket, {form_response_id: 'LATE', submitted_at: '2026-09-19T08:02:00.001Z'})).outcome, 'grace_expired');
+});
+
+test('direct code cannot accept forged token, non-roster identity or impossible timestamp', () => {
+  const {service, ticket, setNow} = directFixture();
+  setNow('2026-09-19T08:01:00Z');
+  assert.throws(() => service.processFormSubmission(directSubmission(ticket, {grant_id: 'FORM_forged'})), {code: 'grant_not_found'});
+  assert.throws(() => service.processFormSubmission(directSubmission(ticket, {submitted_at: ''})), {code: 'validation_error'});
+  assert.equal(service.processFormSubmission(directSubmission(ticket, {email: 'outsider@example.edu'})).outcome, 'email_not_in_roster');
+  assert.equal(service.processFormSubmission(directSubmission(ticket, {form_response_id: 'EARLY', submitted_at: '2026-09-19T07:59:59Z'})).outcome, 'invalid_submission_time');
+  assert.equal(service.processFormSubmission(directSubmission(ticket, {form_response_id: 'FUTURE', submitted_at: '2026-09-19T08:01:01Z'})).outcome, 'invalid_submission_time');
+  assert.equal(service.processFormSubmission(directSubmission(ticket, {form_response_id: 'VALID'})).accepted, true);
+});
+
+test('direct issue replay repairs partial persistence without extending either deadline', () => {
+  const fixture = createFixture();
+  const {service, gateway, setNow} = fixture;
+  const session = service.startSession(startInput());
+  const append = gateway.append.bind(gateway);
+  let fail = true;
+  gateway.append = (sheet, data) => {
+    if (sheet === Domain.SHEETS.grants && fail) { fail = false; throw new Error('injected failure'); }
+    return append(sheet, data);
+  };
+  const input = {session_id: session.id, valid_seconds: 30, direct_form: true, request_id: 'direct_repair_123456'};
+  assert.throws(() => service.issueQrTicket(input), /injected/);
+  setNow('2026-09-19T08:00:20Z');
+  const repaired = service.issueQrTicket(input);
+  assert.equal(repaired.expires_at, '2026-09-19T08:00:30.000Z');
+  assert.equal(gateway.rows(Domain.SHEETS.grants)[0].expires_at, '2026-09-19T08:02:00.000Z');
+  service.issueQrTicket(input);
+  assert.equal(gateway.rows(Domain.SHEETS.ticketStates).length, 1);
+  assert.equal(gateway.rows(Domain.SHEETS.grants).length, 1);
+});
+
+test('direct trigger replay recovers a write interrupted after attendance append', () => {
+  const {service, gateway, ticket, setNow} = directFixture();
+  setNow('2026-09-19T08:01:00Z');
+  const update = gateway.update.bind(gateway);
+  let fail = true;
+  gateway.update = (sheet, row, patch) => {
+    if (sheet === Domain.SHEETS.formResponses && fail) { fail = false; throw new Error('injected failure'); }
+    return update(sheet, row, patch);
+  };
+  const input = directSubmission(ticket);
+  assert.throws(() => service.processFormSubmission(input), /injected/);
+  assert.equal(service.processFormSubmission(input).accepted, true);
+  assert.equal(gateway.rows(Domain.SHEETS.attendance).length, 1);
+  assert.equal(gateway.rows(Domain.SHEETS.formResponses)[0].processing_status, 'accepted');
+});
+
+test('teacher API passes direct-form gateway and legacy claim still works beside new tickets', () => {
+  const {service, gateway, setNow} = createFixture();
+  const session = service.startSession(startInput());
+  const legacy = service.issueQrTicket({session_id: session.id, valid_seconds: 30});
+  const grant = service.claimQrTicket({ticket_id: legacy.ticket_id, grace_seconds: 120});
+  const response = TeacherApiContract.execute('POST', {teacher_key: 'secret', action: 'issue_qr',
+    session_id: session.id, request_id: 'live_contract_123456'}, {
+    config: {teacherApiKey: 'secret'}, studentConfig: {directForm: true, qrValidSeconds: 30}, service,
+    formGateway: {createPrefilledUrl: (_, token) => 'https://docs.google.com/forms/d/e/test/viewform?entry.1=' + token},
+  });
+  assert.equal(response.ok, true);
+  assert.equal(response.data.flow, 'direct_form');
+  assert.match(response.data.form_url, /FORM_TKT_REQ_live_contract/);
+  gateway.seed(Domain.SHEETS.roster, {roster_id: 'MIGRATE', class_id: 'CLASS_1', email: 'migration@example.edu',
+    email_key: 'migration@example.edu', student_name: 'Migration', is_active: 'true'});
+  setNow('2026-09-19T08:00:40Z');
+  assert.equal(service.processFormSubmission({form_response_id: 'LEGACY', grant_id: grant.grant_id,
+    email: 'migration@example.edu', submitted_at: '2026-09-19T08:00:39Z'}).accepted, true);
+  service.requestCloseSession(session.id);
+  assert.throws(() => service.finalizeSession(session.id), {code: 'session_closing'});
+});
+
 }
