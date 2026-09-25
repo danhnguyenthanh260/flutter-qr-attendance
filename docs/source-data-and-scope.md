@@ -44,4 +44,7 @@ Bản gốc nằm trong Downloads của chủ dự án; bản sao đã kiểm tr
 
 ## Liên kết công việc
 
+- [#49 — Roster và luồng lịch tuần → danh sách → QR](https://github.com/danhnguyenthanh260/flutter-qr-attendance/issues/49).
+- [#48 — Khởi động và chuyển tab chậm](https://github.com/danhnguyenthanh260/flutter-qr-attendance/issues/48).
+
 Xem [contract dữ liệu](contracts.md), [yêu cầu báo cáo](ai-reporting-requirements.md), [nghiệm thu tốc độ](performance-and-navigation.md). Issue và kết quả kiểm thử phải phân biệt: có code, đã tích hợp, đã deploy, đã nghiệm thu.

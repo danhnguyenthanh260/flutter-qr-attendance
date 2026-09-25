@@ -1,5 +1,7 @@
 # Khởi động và chuyển màn hình
 
+Theo dõi triển khai và bằng chứng nghiệm thu tại [issue #48](https://github.com/danhnguyenthanh260/flutter-qr-attendance/issues/48).
+
 ## Hiện trạng và bằng chứng
 
 Người dùng báo ngày 25/09/2026: **khởi động ít nhất 30 giây**, chuyển tab phải chờ tải lại, ảnh hưởng trực tiếp thao tác giảng dạy. Đây là lỗi trải nghiệm cần xử lý; các mẫu API nhanh hơn không phủ nhận quan sát này.
