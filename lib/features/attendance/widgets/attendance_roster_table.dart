@@ -51,34 +51,56 @@ class _AttendanceRosterTableState extends State<AttendanceRosterTable> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(rows.length),
-          const Divider(height: 1, color: AppColors.border),
-          _buildColumnTitles(),
-          const Divider(height: 1, color: AppColors.border),
-          Expanded(
-            child: rows.isEmpty
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'Không có sinh viên nào khớp bộ lọc hiện tại.',
-                        style: AppTypography.bodySecondary,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrow = constraints.maxWidth < 480;
+          final tableContent = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildColumnTitles(),
+              const Divider(height: 1, color: AppColors.border),
+              Expanded(
+                child: rows.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'Không có sinh viên nào khớp bộ lọc hiện tại.',
+                            style: AppTypography.bodySecondary,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: EdgeInsets.zero,
+                        itemCount: rows.length,
+                        separatorBuilder: (_, _) =>
+                            const Divider(height: 1, color: AppColors.borderSubtle),
+                        itemBuilder: (context, index) =>
+                            _buildRow(rows[index], index + 1),
                       ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemCount: rows.length,
-                    separatorBuilder: (_, _) =>
-                        const Divider(height: 1, color: AppColors.borderSubtle),
-                    itemBuilder: (context, index) =>
-                        _buildRow(rows[index], index + 1),
-                  ),
-          ),
-        ],
+              ),
+            ],
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(rows.length),
+              const Divider(height: 1, color: AppColors.border),
+              Expanded(
+                child: isNarrow
+                    ? SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: 480,
+                          child: tableContent,
+                        ),
+                      )
+                    : tableContent,
+              ),
+            ],
+          );
+        },
       ),
     );
   }

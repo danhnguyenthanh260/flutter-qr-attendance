@@ -1,0 +1,36 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "QR Attendance (Windows Release)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "release",
+      "program": "lib/main.dart",
+      "args": [
+        "-d",
+        "windows",
+        "--dart-define=ATTENDANCE_TEACHER_API_URL=https://script.google.com/macros/s/AKfycbxGzNHyaXatKZylXpE7ObHSnqwTJ_gT3-1adJkqsSrpQYYWYQ34PXLAYynavU9HJ0oo9w/exec",
+        "--dart-define=ATTENDANCE_TEACHER_API_KEY=YHWB2BXZD92TYZecEClAIcd-BfBZdM2O8r3BxFZsekg",
+        "--dart-define=ATTENDANCE_TEACHER_ID=teacher-test"
+      ]
+    },
+    {
+      "name": "QR Attendance (Windows Debug)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "debug",
+      "program": "lib/main.dart",
+      "args": [
+        "-d",
+        "windows",
+        "--dart-define=ATTENDANCE_TEACHER_API_URL=https://script.google.com/macros/s/AKfycbxGzNHyaXatKZylXpE7ObHSnqwTJ_gT3-1adJkqsSrpQYYWYQ34PXLAYynavU9HJ0oo9w/exec",
+        "--dart-define=ATTENDANCE_TEACHER_API_KEY=YHWB2BXZD92TYZecEClAIcd-BfBZdM2O8r3BxFZsekg",
+        "--dart-define=ATTENDANCE_TEACHER_ID=teacher-test"
+      ]
+    }
+  ]
+}

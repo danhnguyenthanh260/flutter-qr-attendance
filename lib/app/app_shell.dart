@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/utils/performance_log.dart';
+import '../features/ai_assistant/ai_assistant_view.dart';
 import '../features/attendance/attendance_view.dart';
 import '../features/roster_import/roster_preview_view.dart';
 import '../features/teaching/session_selection_view.dart';
@@ -21,6 +22,7 @@ class _AppShellState extends State<AppShell> {
     'Quản lý buổi học',
     'Theo dõi điểm danh',
     'Danh sách lớp từ file',
+    'Trợ lý AI Điểm danh',
   ];
 
   @override
@@ -86,6 +88,9 @@ class _AppShellState extends State<AppShell> {
                             : const SizedBox.shrink(),
                         _visited.contains(2)
                             ? const RosterPreviewView()
+                            : const SizedBox.shrink(),
+                        _visited.contains(3)
+                            ? const AiAssistantView()
                             : const SizedBox.shrink(),
                       ],
                     ),

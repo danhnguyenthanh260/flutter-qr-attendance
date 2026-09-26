@@ -81,8 +81,7 @@ class _HistoryAttendanceViewState extends State<HistoryAttendanceView> {
       case HistoryDataStatus.unavailable:
         return AttendanceStateMessage.error(
           title: 'Không đọc được lịch sử buổi học',
-          message:
-              provider.errorMessage ??
+          message: provider.errorMessage ??
               'Không thể tải danh sách phiên từ máy chủ.',
           action: FilledButton.icon(
             onPressed: provider.loadGroups,
@@ -95,7 +94,10 @@ class _HistoryAttendanceViewState extends State<HistoryAttendanceView> {
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(width: 340, child: _SessionGroupList(provider: provider)),
+            SizedBox(
+              width: 340,
+              child: _SessionGroupList(provider: provider),
+            ),
             const SizedBox(width: 16),
             Expanded(child: _HistoryDetailPane(provider: provider)),
           ],
@@ -131,7 +133,7 @@ class _HistoryFilterBar extends StatelessWidget {
               decoration: _decoration('Lớp học', Icons.class_outlined),
               items: provider.classes
                   .map(
-                    (item) => DropdownMenuItem(
+                    (ClassModel item) => DropdownMenuItem<ClassModel>(
                       value: item,
                       child: Text(
                         '${item.courseCode} · ${item.name}',
@@ -150,7 +152,8 @@ class _HistoryFilterBar extends StatelessWidget {
               context,
               label: 'Từ ngày',
               value: provider.fromDate,
-              onPicked: (picked) => provider.setRange(picked, provider.toDate),
+              onPicked: (picked) =>
+                  provider.setRange(picked, provider.toDate),
             ),
           ),
           SizedBox(
@@ -244,11 +247,8 @@ class _SessionGroupList extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
             child: Row(
               children: [
-                const Icon(
-                  Icons.history_rounded,
-                  size: 18,
-                  color: AppColors.primary,
-                ),
+                const Icon(Icons.history_rounded,
+                    size: 18, color: AppColors.primary),
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text('Buổi học', style: AppTypography.heading3),
@@ -380,8 +380,7 @@ class _HistoryDetailPane extends StatelessWidget {
         return const AttendanceStateMessage(
           icon: Icons.touch_app_outlined,
           title: 'Chọn một buổi học',
-          message:
-              'Chọn buổi ở danh sách bên trái để xem bảng tổng kết chi tiết.',
+          message: 'Chọn buổi ở danh sách bên trái để xem bảng tổng kết chi tiết.',
         );
 
       case HistoryDetailStatus.loading:
@@ -392,8 +391,7 @@ class _HistoryDetailPane extends StatelessWidget {
       case HistoryDetailStatus.rosterMissing:
         return AttendanceStateMessage.warning(
           title: 'Buổi học thiếu roster',
-          message:
-              provider.detailErrorMessage ??
+          message: provider.detailErrorMessage ??
               'Không đọc được danh sách lớp nên không thể đối chiếu kết quả.',
           action: FilledButton.icon(
             onPressed: provider.refreshDetail,
@@ -405,8 +403,7 @@ class _HistoryDetailPane extends StatelessWidget {
       case HistoryDetailStatus.unavailable:
         return AttendanceStateMessage.error(
           title: 'Không đọc được kết quả buổi học',
-          message:
-              provider.detailErrorMessage ??
+          message: provider.detailErrorMessage ??
               'Một hoặc nhiều phiên của buổi này không đọc được. Hệ thống không '
                   'suy ra danh sách vắng từ dữ liệu thiếu.',
           action: FilledButton.icon(
@@ -424,62 +421,71 @@ class _HistoryDetailPane extends StatelessWidget {
   }
 
   Widget _buildDetail(AttendanceSummary summary) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(summary.scope.label, style: AppTypography.heading3),
-            Text(
-              'Đọc lúc ${DateFormat('dd/MM HH:mm:ss').format(summary.asOf)}',
-              style: AppTypography.caption,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktopWideAndTall =
+            constraints.maxWidth >= 960 && constraints.maxHeight >= 620;
+
+        final headerChildren = [
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(summary.scope.label, style: AppTypography.heading3),
+              Text(
+                'Đọc lúc ${DateFormat('dd/MM HH:mm:ss').format(summary.asOf)}',
+                style: AppTypography.caption,
+              ),
+              Text(
+                'Nguồn: ${summary.scope.sessionIds.join(', ')}',
+                style: AppTypography.caption,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (summary.sessions.length > 1) ...[
+            const AttendanceInlineBanner(
+              icon: Icons.merge_type_rounded,
+              accent: AppColors.info,
+              background: Color(0xFFF0F9FF),
+              message:
+                  'Buổi này có nhiều phiên. Sinh viên được hợp nhất theo email nên '
+                  'không bị cộng trùng giữa các phiên.',
             ),
-            Text(
-              'Nguồn: ${summary.scope.sessionIds.join(', ')}',
-              style: AppTypography.caption,
-            ),
+            const SizedBox(height: 12),
           ],
-        ),
-        const SizedBox(height: 12),
-        if (summary.sessions.length > 1) ...[
-          const AttendanceInlineBanner(
-            icon: Icons.merge_type_rounded,
-            accent: AppColors.info,
-            background: Color(0xFFF0F9FF),
-            message:
-                'Buổi này có nhiều phiên. Sinh viên được hợp nhất theo email nên '
-                'không bị cộng trùng giữa các phiên.',
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (summary.rosterChangedBetweenSessions) ...[
-          const AttendanceInlineBanner(
-            icon: Icons.published_with_changes_rounded,
-            accent: AppColors.warning,
-            background: AppColors.warningBg,
-            message: 'Roster có thay đổi giữa các phiên của buổi này. Số liệu dùng roster hợp nhất mới nhất.',
-          ),
-          const SizedBox(height: 12),
-        ],
-        if (!summary.isFinalized) ...[
-          const AttendanceInlineBanner(
-            icon: Icons.hourglass_top_rounded,
-            accent: AppColors.warning,
-            background: AppColors.warningBg,
-            message: 'Buổi này còn phiên chưa chốt nên số liệu là tạm tính, chưa kết luận vắng.',
-          ),
-          const SizedBox(height: 12),
-        ],
-        AttendanceSummaryCards(summary: summary),
-        const SizedBox(height: 16),
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth >= 960) {
-                return Row(
+          if (summary.rosterChangedBetweenSessions) ...[
+            const AttendanceInlineBanner(
+              icon: Icons.published_with_changes_rounded,
+              accent: AppColors.warning,
+              background: AppColors.warningBg,
+              message:
+                  'Roster có thay đổi giữa các phiên của buổi này. Số liệu dùng roster hợp nhất mới nhất.',
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (!summary.isFinalized) ...[
+            const AttendanceInlineBanner(
+              icon: Icons.hourglass_top_rounded,
+              accent: AppColors.warning,
+              background: AppColors.warningBg,
+              message:
+                  'Buổi này còn phiên chưa chốt nên số liệu là tạm tính, chưa kết luận vắng.',
+            ),
+            const SizedBox(height: 12),
+          ],
+          AttendanceSummaryCards(summary: summary),
+          const SizedBox(height: 16),
+        ];
+
+        if (isDesktopWideAndTall) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...headerChildren,
+              Expanded(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(
@@ -492,11 +498,37 @@ class _HistoryDetailPane extends StatelessWidget {
                       child: RetryEventsPanel(summary: summary),
                     ),
                   ],
-                );
-              }
+                ),
+              ),
+            ],
+          );
+        }
 
-              return SingleChildScrollView(
-                child: Column(
+        return SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ...headerChildren,
+              if (constraints.maxWidth >= 960)
+                SizedBox(
+                  height: 480,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: AttendanceRosterTable(summary: summary),
+                      ),
+                      const SizedBox(width: 16),
+                      SizedBox(
+                        width: 340,
+                        child: RetryEventsPanel(summary: summary),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                Column(
                   children: [
                     SizedBox(
                       height: 380,
@@ -509,11 +541,10 @@ class _HistoryDetailPane extends StatelessWidget {
                     ),
                   ],
                 ),
-              );
-            },
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

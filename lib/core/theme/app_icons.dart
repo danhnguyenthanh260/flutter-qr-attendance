@@ -11,4 +11,5 @@ abstract final class AppIcons {
   static const close = Icons.close;
   static const classroom = Icons.school_outlined;
   static const time = Icons.schedule_outlined;
+  static const ai = Icons.chat_bubble_outline_rounded;
 }

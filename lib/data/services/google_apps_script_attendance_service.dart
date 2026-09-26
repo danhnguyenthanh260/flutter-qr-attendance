@@ -69,11 +69,8 @@ class ConfigurationRequiredAttendanceService implements AttendanceService {
 }
 
 AttendanceService createConfiguredTeacherAttendanceService() {
-  if (AppConfig.useSeededMockData) {
+  if (AppConfig.useSeededMockData || !AppConfig.hasTeacherApiConfiguration) {
     return MockAttendanceService(simulateDelay: false);
-  }
-  if (!AppConfig.hasTeacherApiConfiguration) {
-    return ConfigurationRequiredAttendanceService();
   }
   return GoogleAppsScriptAttendanceService(
     endpoint: Uri.parse(AppConfig.teacherApiUrl),

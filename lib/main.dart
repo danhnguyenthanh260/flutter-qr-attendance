@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'core/utils/performance_log.dart';
 import 'data/services/attendance_service.dart';
 import 'data/services/google_apps_script_attendance_service.dart';
+import 'features/ai_assistant/ai_assistant_provider.dart';
 import 'features/attendance/attendance_history_provider.dart';
 import 'features/attendance/attendance_results_provider.dart';
 import 'features/teaching/session_provider.dart';
@@ -36,6 +37,9 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => AttendanceHistoryProvider(service: attendanceService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AiAssistantProvider(),
         ),
       ],
       child: const QrAttendanceApp(),

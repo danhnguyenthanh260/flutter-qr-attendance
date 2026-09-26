@@ -16,6 +16,8 @@ const List<Size> _windowSizes = [
   Size(1366, 768),
   Size(1280, 800),
   Size(1024, 768),
+  Size(960, 600),
+  Size(800, 600),
 ];
 
 void main() {

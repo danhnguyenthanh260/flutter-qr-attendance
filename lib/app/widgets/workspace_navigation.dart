@@ -17,6 +17,7 @@ class WorkspaceNavigation extends StatelessWidget {
     (label: 'Lịch giảng dạy', icon: AppIcons.session),
     (label: 'Bảng điểm danh', icon: AppIcons.attendance),
     (label: 'Dữ liệu lớp', icon: AppIcons.roster),
+    (label: 'Trợ lý AI', icon: AppIcons.ai),
   ];
 
   @override
@@ -27,85 +28,103 @@ class WorkspaceNavigation extends StatelessWidget {
       border: Border(right: BorderSide(color: AppColors.border)),
     ),
     child: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
-            child: Row(
-              children: [
-                const Icon(
-                  AppIcons.session,
-                  color: AppColors.primary,
-                  size: 32,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isNarrowHeight = constraints.maxHeight < 760;
+          return Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: isNarrowHeight ? 14 : 24,
                 ),
-                if (!compact) ...[
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Text(
-                      'QR Attendance',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                      ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      AppIcons.session,
+                      color: AppColors.primary,
+                      size: 32,
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          for (var index = 0; index < destinations.length; index++)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Tooltip(
-                message: compact ? destinations[index].label : '',
-                child: Semantics(
-                  selected: selectedIndex == index,
-                  child: Material(
-                    color: Colors.transparent,
-                    child: compact
-                        ? IconButton.filledTonal(
-                            isSelected: selectedIndex == index,
-                            style: IconButton.styleFrom(
-                              backgroundColor: selectedIndex == index
-                                  ? AppColors.primaryLight
-                                  : Colors.transparent,
-                            ),
-                            tooltip: destinations[index].label,
-                            onPressed: () => onSelected(index),
-                            icon: Icon(destinations[index].icon),
-                          )
-                        : ListTile(
-                            selected: selectedIndex == index,
-                            selectedTileColor: AppColors.primaryLight,
-                            selectedColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            minTileHeight: 56,
-                            contentPadding: EdgeInsets.symmetric(
-                              horizontal: compact ? 20 : 16,
-                            ),
-                            leading: Icon(destinations[index].icon, size: 24),
-                            title: compact
-                                ? null
-                                : Text(destinations[index].label),
-                            onTap: () => onSelected(index),
+                    if (!compact) ...[
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'QR Attendance',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
                           ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < destinations.length; index++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          child: Tooltip(
+                            message: compact ? destinations[index].label : '',
+                            child: Semantics(
+                              selected: selectedIndex == index,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: compact
+                                    ? IconButton.filledTonal(
+                                        isSelected: selectedIndex == index,
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: selectedIndex == index
+                                              ? AppColors.primaryLight
+                                              : Colors.transparent,
+                                        ),
+                                        tooltip: destinations[index].label,
+                                        onPressed: () => onSelected(index),
+                                        icon: Icon(destinations[index].icon),
+                                      )
+                                    : ListTile(
+                                        selected: selectedIndex == index,
+                                        selectedTileColor: AppColors.primaryLight,
+                                        selectedColor: AppColors.primary,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        minTileHeight: 48,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: compact ? 20 : 16,
+                                        ),
+                                        leading: Icon(destinations[index].icon, size: 24),
+                                        title: compact
+                                            ? null
+                                            : Text(destinations[index].label),
+                                        onTap: () => onSelected(index),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
-            ),
-          const Spacer(),
-          if (!compact)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text(
-                'Không gian giảng viên',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
-        ],
+              if (!compact && !isNarrowHeight)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'Không gian giảng viên',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     ),
   );
