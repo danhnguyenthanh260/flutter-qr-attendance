@@ -25,6 +25,8 @@ class CatalogRepository {
   final Future<List<SessionSlot>> Function(String) _loadSlots;
   final _CatalogCache<ClassModel> _classes;
   final _CatalogCache<SessionSlot> _slots;
+  Future<List<ClassModel>> refreshClasses() =>
+      _classes.refresh('classes', _loadClasses);
   Future<List<ClassModel>> getClasses() =>
       _classes.read('classes', _loadClasses);
   Future<List<SessionSlot>> getSlots(String classId) =>
@@ -44,6 +46,16 @@ class _CatalogCache<T> {
   final Map<String, dynamic> Function(T) encode;
   final _cache = <String, ({DateTime saved, List<T> items})>{};
   final _pending = <String, Future<List<T>>>{};
+
+  Future<List<T>> refresh(String key, Future<List<T>> Function() load) async {
+    final pending = _pending[key];
+    if (pending != null) await pending;
+    final items = List<T>.unmodifiable(await load());
+    final saved = clock();
+    _cache[key] = (saved: saved, items: items);
+    await storage?.write(key, items.map(encode).toList(), saved);
+    return items;
+  }
 
   Future<List<T>> read(String key, Future<List<T>> Function() load) {
     final cached = _cache[key];

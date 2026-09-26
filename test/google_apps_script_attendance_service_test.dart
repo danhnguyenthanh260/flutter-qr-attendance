@@ -373,4 +373,45 @@ void main() {
     expect(ticket.generation, 3);
     expect(ticket.formUrl, contains('route=claim'));
   });
+
+  test('transient HTML on a read retries once and recovers JSON', () async {
+    var calls = 0;
+    final service = createService(
+      MockClient((request) async {
+        calls++;
+        return calls == 1
+            ? http.Response('<html>Temporary error</html>', 200)
+            : http.Response('{"ok":true,"data":[]}', 200);
+      }),
+    );
+    expect(await service.listSessions(), isEmpty);
+    expect(calls, 2);
+  });
+  test(
+    'persistent HTML exposes safe metadata instead of claiming lost wifi',
+    () async {
+      final service = createService(
+        MockClient(
+          (request) async => http.Response(
+            '<html>Private content</html>',
+            503,
+            headers: {'content-type': 'text/html'},
+          ),
+        ),
+      );
+      await expectLater(
+        service.listSessions(),
+        throwsA(
+          isA<TeacherApiException>()
+              .having((e) => e.code, 'code', 'invalid_response')
+              .having((e) => e.details?['http_status'], 'status', 503)
+              .having(
+                (e) => e.message.contains('Private content'),
+                'private body excluded',
+                false,
+              ),
+        ),
+      );
+    },
+  );
 }

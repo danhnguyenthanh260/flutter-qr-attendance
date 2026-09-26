@@ -1,0 +1,11 @@
+# Weekly roster implementation — 2026-09-26
+
+User approved implementation after FAP/data research. Workspace: flutter-qr-attendance-qr-grants, branch feature/startup-navigation-roster.
+
+Merged origin/main bcd85b3 via 022c1a8; resolved provider/view path conflicts preserving feature architecture and session verification. Incoming navigation tests ported and validated.
+
+Implemented weekly class-filtered calendar, lesson drilldown/date guard, weekly matrix, authenticated overview API, additive idempotent roster import with confirmation and optional identity columns, API error classification/read-only retry, per-request Sheet caching and session-name mapping fix.
+
+Teacher deployment v17 (student legacy v10 unchanged). 125 Flutter tests, 30 Node tests, architecture check pass. Windows 1.3.0 built; native calendar and 37-row local roster preview observed. Two source files hash-verified in bundle. No live import/attendance submission performed. Existing session preserved.
+
+Evidence, performance caveats and remaining requirements: docs/design/verification-1.3.0.md. Release packaging and final checks tracked there; do not claim full FAP parity or accepted live attendance.

@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../data/models/roster_import.dart';
+import '../teaching/session_provider.dart';
 import 'roster_import_view_model.dart';
 
 class RosterPreviewView extends StatefulWidget {
@@ -13,6 +15,80 @@ class RosterPreviewView extends StatefulWidget {
 
 class _RosterPreviewViewState extends State<RosterPreviewView> {
   final _model = RosterImportViewModel();
+  bool _importing = false;
+  String? _importResult;
+  Future<void> _import(RosterImport document) async {
+    final match = RegExp(
+      r'^([A-Z0-9-]+)_([A-Z0-9-]+)_.+_(FALL|SUMMER|SPRING)([0-9]{4})_',
+    ).firstMatch(document.sourceName);
+    if (match == null ||
+        document.students.any((s) => s.className != match.group(1))) {
+      setState(
+        () => _importResult = 'Không xác định được lớp/môn/học kỳ từ tên file. Hãy giữ tên bản xuất gốc.',
+      );
+      return;
+    }
+    final className = match.group(1)!;
+    final course = match.group(2)!;
+    final term = '${match.group(3)}${match.group(4)}';
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nhập danh sách vào Google Sheets'),
+        content: Text(
+          '$className · $course · $term\n${document.students.length} sinh viên.\nTạo lớp riêng, giữ dữ liệu cũ. Không tạo lịch học hoặc kết quả điểm danh. Email từ file sẽ được dùng để đối chiếu tài khoản Google.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Nhập danh sách'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
+    setState(() {
+      _importing = true;
+      _importResult = null;
+    });
+    try {
+      final count = await context.read<SessionProvider>().importRoster({
+        'class_name': className,
+        'course_code': course,
+        'term': term,
+        'students': document.students
+            .map(
+              (s) => {
+                'roll_number': s.rollNumber,
+                'email': s.email,
+                'member_code': s.memberCode,
+                'student_name': s.fullName,
+              },
+            )
+            .toList(),
+      });
+      if (mounted) {
+        setState(
+          () => _importResult =
+              'Đã nhập $count sinh viên vào lớp $className · $course · $term.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _importResult =
+              'Chưa xác nhận nhập thành công: $e. Có thể thử lại cùng file; không tạo bản sao.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,8 +138,20 @@ class _RosterPreviewViewState extends State<RosterPreviewView> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Xem trước trên máy • Chưa nhập vào Google Sheets. File danh sách không chứa lịch sử điểm danh hoặc lịch học.',
+              'Kiểm tra danh sách trước khi nhập. File này không chứa lịch sử điểm danh hoặc lịch học.',
             ),
+            if (document != null && document.isValid)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  onPressed: _importing ? null : () => _import(document),
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: Text(
+                    _importing ? 'Đang nhập…' : 'Nhập lớp vào Google Sheets',
+                  ),
+                ),
+              ),
+            if (_importResult != null) Text(_importResult!),
             if (_model.error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),

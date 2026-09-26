@@ -46,6 +46,56 @@ var AttendanceRepository = (function (Domain) {
       });
   };
 
+  Repository.prototype.importRoster = function (input) {
+    input = input || {};
+    var name = Domain.requireString(input.class_name, 'class_name');
+    var course = Domain.requireString(input.course_code, 'course_code');
+    var term = Domain.requireString(input.term, 'term');
+    [name, course, term].forEach(function (v) {
+      if (!/^[A-Z0-9-]{2,32}$/.test(v)) Domain.fail('invalid_import', 'Class, course and term must use uppercase letters, digits or hyphens.', null);
+    });
+    if (!Array.isArray(input.students) || !input.students.length || input.students.length > 500) Domain.fail('invalid_import', 'Roster must contain 1–500 students.', null);
+    var classId = 'IMPORTED_' + name + '_' + course + '_' + term;
+    var emails = {}, rolls = {};
+    var students = input.students.map(function (s) {
+      var roll = Domain.requireString(s.roll_number, 'roll_number');
+      var email = Domain.requireString(s.email, 'email').trim().toLowerCase();
+      var fullName = Domain.requireString(s.student_name, 'student_name');
+      var member = Domain.optionalString(s.member_code);
+      if (!/^[A-Za-z0-9-]{2,32}$/.test(roll) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /^[=+@-]/.test(email) || /^[=+@-]/.test(fullName) || /^[=+@-]/.test(member)) Domain.fail('invalid_import', 'Invalid roster value.', null);
+      if (emails[email] || rolls[roll.toUpperCase()]) Domain.fail('invalid_import', 'Duplicate email or student number.', null);
+      emails[email] = true; rolls[roll.toUpperCase()] = true;
+      return {roster_id: classId + '_' + roll.toUpperCase(), class_id: classId, email: email, email_key: email,
+        student_name: fullName, roll_number: roll, member_code: member, is_active: true};
+    });
+    var existing = this._records(Domain.SHEETS.roster).filter(function (r) { return r.class_id === classId; });
+    existing.forEach(function (r) {
+      var expected = students.filter(function (s) { return s.roster_id === r.roster_id; })[0];
+      if (!expected || expected.email_key !== r.email_key || expected.student_name !== r.student_name || expected.roll_number !== r.roll_number || expected.member_code !== r.member_code || !Domain.asBoolean(r.is_active)) Domain.fail('import_conflict', 'Existing roster differs. Review changes before importing; nothing overwritten.', null);
+    });
+    var entry = this._findEntry(Domain.SHEETS.classes, function (r) { return r.class_id === classId; });
+    if (entry && (entry.data.name !== name || entry.data.course_code !== course || entry.data.schedule_description !== term)) Domain.fail('import_conflict', 'Existing class differs.', null);
+    var now = this._nowIso();
+    if (this._gateway.ensureOptionalColumns) this._gateway.ensureOptionalColumns(Domain.SHEETS.roster, ['roll_number', 'member_code']);
+    if (!entry) entry = this._gateway.append(Domain.SHEETS.classes, {class_id: classId, name: name, course_code: course, room: '', schedule_description: term, is_active: false, created_at: now, updated_at: now});
+    students.forEach(function (s) {
+      if (!existing.some(function (r) { return r.roster_id === s.roster_id; })) {
+        s.created_at = now; s.updated_at = now; this._gateway.append(Domain.SHEETS.roster, s);
+      }
+    }, this);
+    this._gateway.update(Domain.SHEETS.classes, entry.rowNumber, {is_active: true, updated_at: now});
+    return {class_id: classId, total_students: students.length, added: students.length - existing.length};
+  };
+
+  Repository.prototype.getTeachingOverview = function (classId) {
+    var sessions = this.listSessions({class_id: classId});
+    var ids = {};
+    sessions.forEach(function (s) { ids[s.id] = true; });
+    return {slots: this.listSlotsForClass(classId), roster: this.getRoster(classId),
+      sessions: sessions, attendance: this._records(Domain.SHEETS.attendance)
+        .filter(function (r) { return ids[r.session_id]; }).map(this._toAttendance)};
+  };
+
   Repository.prototype.getRoster = function (classId) {
     this._requireClass(classId);
     var roster = this._records(Domain.SHEETS.roster)
@@ -59,6 +109,8 @@ var AttendanceRepository = (function (Domain) {
           email: record.email,
           email_key: record.email_key,
           student_name: record.student_name,
+          roll_number: record.roll_number || '',
+          member_code: record.member_code || '',
         };
       });
     if (roster.length === 0) {
@@ -226,12 +278,14 @@ var AttendanceRepository = (function (Domain) {
 
   Repository.prototype.listSessions = function (filters) {
     filters = filters || {};
+    var classes = {};
+    this._records(Domain.SHEETS.classes).forEach(function (record) { classes[record.class_id] = record; });
     return this._records(Domain.SHEETS.sessions)
       .filter(function (record) {
         return (!filters.class_id || record.class_id === filters.class_id) &&
           (!filters.date || record.session_date === filters.date);
       })
-      .map(this._toSession.bind(this));
+      .map(function (record) { return this._toSession(record, classes[record.class_id]); }, this);
   };
 
   Repository.prototype.getSessionResults = function (sessionId) {

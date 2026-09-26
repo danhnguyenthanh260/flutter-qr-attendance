@@ -24,7 +24,7 @@ class AttendanceStateMessage extends StatelessWidget {
     required this.title,
     required this.message,
     this.action,
-  }) : icon = Icons.wifi_off_rounded,
+  }) : icon = Icons.error_outline_rounded,
        accent = AppColors.error;
 
   const AttendanceStateMessage.warning({

@@ -74,6 +74,8 @@ void main() {
           // Open a synthetic session to exercise the QR presentation and narrow action wrap.
           await session.startSession();
           await tester.pump();
+          await tester.tap(find.textContaining('Phiên đang mở ·'));
+          await tester.pumpAndSettle();
           await tester.tap(find.text('Xem mã QR'));
           await tester.pump(const Duration(milliseconds: 300));
           expect(tester.takeException(), isNull);

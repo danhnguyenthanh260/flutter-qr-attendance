@@ -13,6 +13,14 @@ var AttendanceDataService = (function (Repository) {
     }.bind(this));
   };
 
+  Service.prototype.importRoster = function (input) {
+    return this._mutate(function () { return this._repository.importRoster(input); });
+  };
+
+  Service.prototype.getTeachingOverview = function (classId) {
+    return this._settleAndRead(function () { return this._repository.getTeachingOverview(classId); });
+  };
+
   Service.prototype.listClasses = function () {
     return this._repository.listClasses();
   };

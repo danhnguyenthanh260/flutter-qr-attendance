@@ -16,6 +16,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'GET') {
       switch (action) {
+        case 'class_overview':
+          return Domain.success(service.getTeachingOverview(Domain.requireString(payload.class_id, 'class_id')));
         case 'classes':
           return Domain.success(service.listClasses());
         case 'slots':
@@ -36,6 +38,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'POST') {
       switch (action) {
+        case 'import_roster':
+          return Domain.success(service.importRoster(payload));
         case 'start_session':
           return Domain.success(service.startSession({
             class_id: payload.class_id,

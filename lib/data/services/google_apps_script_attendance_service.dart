@@ -11,7 +11,9 @@ import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
+import '../models/teaching_overview.dart';
 import '../repositories/catalog_repository.dart';
+import '../repositories/teaching_repository.dart';
 import 'attendance_api_exception.dart';
 import 'attendance_service.dart';
 
@@ -88,7 +90,23 @@ AttendanceService createConfiguredTeacherAttendanceService() {
 /// The application continues to use [MockAttendanceService] until a caller
 /// explicitly supplies a deployed endpoint and an authenticated teacher identity.
 /// QR ticket issuance remains owned by issue #7 and deliberately fails closed here.
-class GoogleAppsScriptAttendanceService implements AttendanceService {
+class GoogleAppsScriptAttendanceService
+    implements AttendanceService, TeachingRepository {
+  @override
+  Future<TeachingOverview> getTeachingOverview(String classId) async =>
+      TeachingOverview.fromJson(
+        _asMap(
+          await _get('class_overview', query: {'class_id': classId}),
+          'class_overview',
+        ),
+      );
+  @override
+  Future<int> importRoster(Map<String, dynamic> payload) async {
+    final data = _asMap(await _post('import_roster', payload), 'import_roster');
+    await _catalog.refreshClasses();
+    return data['total_students'] as int;
+  }
+
   final Uri _endpoint;
   final String _teacherKey;
   final String _teacherId;
@@ -267,7 +285,7 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     );
     try {
       final response = await _withDeadline(
-        _getAppsScriptResponse(uri),
+        _readWithOneRetry(uri),
         mutation: false,
       );
       final data = _decodeEnvelope(response, action);
@@ -283,6 +301,15 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
       });
       rethrow;
     }
+  }
+
+  Future<http.Response> _readWithOneRetry(Uri uri) async {
+    final response = await _getAppsScriptResponse(uri);
+    if (!_hasJsonBody(response) &&
+        (response.statusCode == 200 || response.statusCode >= 500)) {
+      return _getAppsScriptResponse(uri);
+    }
+    return response;
   }
 
   /// Prevent the platform HTTP client from automatically following Apps
@@ -451,7 +478,14 @@ class GoogleAppsScriptAttendanceService implements AttendanceService {
     } on FormatException {
       throw TeacherApiException(
         code: 'invalid_response',
-        message: 'Teacher API returned invalid JSON for $action.',
+        message: response.statusCode == 401 || response.statusCode == 403
+            ? 'Máy chủ từ chối quyền truy cập. Vui lòng kiểm tra cấu hình tài khoản.'
+            : 'Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại; đây không nhất thiết là lỗi Wi-Fi.',
+        details: {
+          'action': action,
+          'http_status': response.statusCode,
+          'content_type': response.headers['content-type'] ?? 'unknown',
+        },
       );
     }
 

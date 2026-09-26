@@ -30,6 +30,7 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
 }
 
 class RosterEntry {
+  final String rollNumber;
   final String id;
   final String classId;
   final String email;
@@ -37,6 +38,7 @@ class RosterEntry {
   final String? studentName;
 
   const RosterEntry({
+    this.rollNumber = '',
     required this.id,
     required this.classId,
     required this.email,
@@ -49,6 +51,7 @@ class RosterEntry {
   factory RosterEntry.fromJson(Map<String, dynamic> json) {
     final email = _blankToNull(json['email']) ?? '';
     return RosterEntry(
+      rollNumber: _blankToNull(json['roll_number']) ?? '',
       id: _blankToNull(json['id']) ?? email,
       classId: _blankToNull(json['class_id']) ?? '',
       email: email,
@@ -62,6 +65,7 @@ class RosterEntry {
   Map<String, dynamic> toJson() => {
     'id': id,
     'class_id': classId,
+    'roll_number': rollNumber,
     'email': email,
     'email_key': emailKey,
     'student_name': studentName,

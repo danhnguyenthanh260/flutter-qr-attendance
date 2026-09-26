@@ -39,7 +39,7 @@ void main() {
 
     expect(find.text('QR Attendance'), findsOneWidget);
     expect(find.text('Phiên điểm danh'), findsOneWidget);
-    expect(find.text('Khởi tạo phiên điểm danh'), findsOneWidget);
-    expect(find.text('Bắt đầu phiên điểm danh'), findsOneWidget);
+    expect(find.text('Lịch giảng dạy'), findsOneWidget);
+    expect(find.text('Hôm nay'), findsOneWidget);
   });
 }

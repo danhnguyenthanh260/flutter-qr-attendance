@@ -603,4 +603,80 @@ test('teacher API passes direct-form gateway and legacy claim still works beside
   assert.throws(() => service.finalizeSession(session.id), {code: 'session_closing'});
 });
 
+
+test('class overview is scoped and exposes roster without opening attendance', () => {
+  const {service, gateway} = createFixture();
+  const overview = service.getTeachingOverview('CLASS_1');
+  assert.equal(overview.roster.length, 1);
+  assert.equal(overview.slots.length, 1);
+  assert.equal(overview.sessions.length, 0);
+  assert.equal(gateway.rows(Domain.SHEETS.sessions).length, 0);
+});
+
+test('import adds an isolated offering with student identifiers and is replay-safe', () => {
+  const {service, gateway} = createFixture();
+  const input = {class_name:'SE1913',course_code:'PRM393',term:'FALL2026',students:[
+    {roll_number:'SE001',email:'person@example.edu',student_name:'Student',member_code:'MEM001'}
+  ]};
+  const first = service.importRoster(input);
+  assert.equal(first.added,1);
+  assert.equal(service.importRoster(input).added,0);
+  assert.equal(service.getTeachingOverview(first.class_id).roster[0].roll_number,'SE001');
+  assert.equal(service.listSlotsForClass(first.class_id).length,0);
+  assert.equal(gateway.rows(Domain.SHEETS.roster).length,2);
+  assert.throws(() => service.importRoster({...input,students:[{...input.students[0],email:'other@example.edu'}]}), /Existing roster differs/);
+  assert.equal(gateway.rows(Domain.SHEETS.roster).length,2);
+});
+
+test('import validates all rows before any write and rejects duplicate identities', () => {
+  const {service, gateway} = createFixture();
+  const student={roll_number:'SE001',email:'person@example.edu',student_name:'Student',member_code:''};
+  const input={class_name:'SE1913',course_code:'PRM393',term:'FALL2026',students:[student,student]};
+  assert.throws(()=>service.importRoster(input), /Duplicate/);
+  assert.equal(gateway.rows(Domain.SHEETS.classes).length,2);
+  assert.equal(gateway.rows(Domain.SHEETS.roster).length,1);
+});
+
+
+test('partial roster import is hidden until replay completes and rejects unauthorized calls', () => {
+  const {service, gateway} = createFixture();
+  const input={class_name:'SE1919',course_code:'PRN232',term:'FALL2026',students:[
+    {roll_number:'SE001',email:'one@example.edu',student_name:'One',member_code:''},
+    {roll_number:'SE002',email:'two@example.edu',student_name:'Two',member_code:''}
+  ]};
+  const append=gateway.append.bind(gateway);
+  let fail=true;
+  gateway.append=(sheet,row)=>{
+    if (sheet===Domain.SHEETS.roster && row.roll_number==='SE002' && fail) {fail=false; throw new Error('interrupted');}
+    return append(sheet,row);
+  };
+  assert.throws(()=>service.importRoster(input),/interrupted/);
+  assert.equal(service.listClasses().length,2);
+  const result=service.importRoster(input);
+  assert.equal(result.added,1);
+  assert.equal(service.listClasses().length,3);
+  assert.equal(service.getTeachingOverview(result.class_id).roster.length,2);
+  assert.throws(()=>TeacherApiContract.execute('POST',{...input,action:'import_roster',teacher_key:'wrong'},{service,config:{teacherApiKey:'secret'}}),/authentication/);
+});
+
+test('gateway reuses sheet reads within a request and invalidates after append', () => {
+  const gateway=Object.create(GoogleSheetsGateway.prototype);
+  gateway._domain=Domain; gateway._readCache={};
+  const rows=[Domain.HEADERS[Domain.SHEETS.classes],['C','M','Class','','',true,'','']];
+  let reads=0;
+  gateway._requireSheet=()=>({getLastRow:()=>rows.length,getLastColumn:()=>rows[0].length,
+    getRange:(row,col,height,width)=>({getValues:()=>{reads++;return rows.slice(row-1,row-1+height).map(r=>r.slice(col-1,col-1+width));},setValues:(values)=>{values.forEach((v,i)=>rows[row-1+i]=v);}})});
+  assert.equal(gateway.read(Domain.SHEETS.classes).length,1);
+  gateway.read(Domain.SHEETS.classes);
+  assert.equal(reads,1);
+  gateway.append(Domain.SHEETS.classes,{class_id:'D',course_code:'N',name:'Other',is_active:true});
+  assert.equal(gateway.read(Domain.SHEETS.classes).length,2);
+});
+test('session lists preserve class names beyond the first record', () => {
+  const {service,gateway}=createFixture();
+  for (let i=0;i<2;i++) gateway.seed(Domain.SHEETS.sessions,{session_id:'s'+i,class_id:'CLASS_1',slot_number:2,time_range:'09:15 - 10:45',session_date:'2026-09-19',status:'closed',opened_at:'2026-09-19T08:00:00Z'});
+  const sessions=service.listSessions({class_id:'CLASS_1'});
+  assert.equal(sessions[0].class_name,sessions[1].class_name);
+  assert.equal(sessions[1].class_name,'PRM392 - Flutter');
+});
 }

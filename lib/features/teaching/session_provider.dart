@@ -7,7 +7,9 @@ import '../../core/utils/performance_log.dart';
 import '../../data/models/class_model.dart';
 import '../../data/models/qr_ticket_model.dart';
 import '../../data/models/session_model.dart';
+import '../../data/models/teaching_overview.dart';
 import '../../data/repositories/attendance_repository.dart';
+import '../../data/repositories/teaching_repository.dart';
 import '../qr/qr_controller.dart';
 
 class SessionProvider extends ChangeNotifier {
@@ -46,6 +48,30 @@ class SessionProvider extends ChangeNotifier {
   bool _isClosingSession = false;
   String? _errorMessage;
 
+  Future<TeachingOverview> loadOverview(String classId) async {
+    final service = _service;
+    if (service is TeachingRepository) {
+      return (service as TeachingRepository).getTeachingOverview(classId);
+    }
+    return TeachingOverview(
+      slots: await service.getSlotsForClass(classId),
+      roster: const [],
+      sessions: await service.listSessions(classId: classId),
+      attendance: const [],
+    );
+  }
+
+  Future<int> importRoster(Map<String, dynamic> payload) async {
+    final service = _service;
+    if (service is! TeachingRepository) {
+      throw StateError('Backend chưa hỗ trợ nhập roster.');
+    }
+    final count = await (service as TeachingRepository).importRoster(payload);
+    _classes = await _service.getClasses();
+    notifyListeners();
+    return count;
+  }
+
   // Getters
   List<ClassModel> get classes => _classes;
   ClassModel? get selectedClass => _selectedClass;
@@ -74,7 +100,8 @@ class SessionProvider extends ChangeNotifier {
   // Load initial classes and restore session state (Issue #21)
   bool get isInitialized => _classes.isNotEmpty && _sessionVerified;
 
-  Future<void> loadInitialData({bool force = false}) => _startup ??= _loadInitialData();
+  Future<void> loadInitialData({bool force = false}) =>
+      _startup ??= _loadInitialData();
 
   Future<void> _loadInitialData() async {
     _isLoading = true;
