@@ -3,9 +3,9 @@ import 'attendance_summary.dart';
 import 'class_model.dart';
 
 enum AbsenceWarningStatus {
-  barred, // Vắng >= 20% tổng số slot -> BỊ CẤM THI
-  danger, // Vắng gần 20% (chỉ còn 1-2 buổi nữa là chạm ngưỡng) -> NGUY CƠ CAO
-  safe,   // Dưới ngưỡng nguy cơ -> AN TOÀN
+  barred, // Vắng quá 20% tổng số slot (> 20%) -> BỊ CẤM THI
+  danger, // Vắng gần hoặc chạm 20% (còn 0-1 buổi nữa là cấm thi) -> NGUY CƠ CAO
+  safe,   // Dưới ngưỡng nguy cơ (còn >= 2 buổi được phép nghỉ) -> AN TOÀN
 }
 
 class StudentAbsenceRecord {
@@ -32,18 +32,22 @@ class StudentAbsenceRecord {
   double get absenceRate =>
       totalSlots > 0 ? (totalAbsentSlots / totalSlots) * 100 : 0.0;
 
-  /// Ngưỡng số slot vắng để tính 20% (ví dụ 20 slot -> 4 slot)
+  /// Ngưỡng số slot vắng để tính 20% (ví dụ 20 slot -> 4.0 slot)
   double get barredThreshold => totalSlots * 0.20;
 
-  /// Ngưỡng nguy cơ: tiệm cận 20% (thường là trong vòng 2 slot trước ngưỡng cấm thi)
-  double get dangerThreshold => (barredThreshold - 2).clamp(1.0, barredThreshold);
+  /// Số slot vắng tối đa được phép nghỉ (không quá 20%).
+  /// Vắng đúng 20% vẫn KHÔNG BỊ CẤM THI, chỉ khi vắng QUÁ 20% mới bị cấm thi.
+  int get maxAllowedAbsentSlots => (totalSlots * 0.20).floor();
 
-  /// Phân loại trạng thái học vụ
+  /// Phân loại trạng thái học vụ:
+  /// - Vắng quá 20% (totalAbsentSlots > maxAllowedAbsentSlots) -> BỊ CẤM THI
+  /// - Vắng chạm trần 20% (còn 0 buổi) hoặc gần trần (còn 1 buổi) -> NGUY CƠ CAO
+  /// - Còn lại -> AN TOÀN
   AbsenceWarningStatus get status {
-    if (totalAbsentSlots >= barredThreshold) {
+    if (totalAbsentSlots > maxAllowedAbsentSlots) {
       return AbsenceWarningStatus.barred;
     }
-    if (totalAbsentSlots >= dangerThreshold) {
+    if (totalAbsentSlots >= maxAllowedAbsentSlots - 1 && maxAllowedAbsentSlots > 0) {
       return AbsenceWarningStatus.danger;
     }
     return AbsenceWarningStatus.safe;
@@ -52,10 +56,13 @@ class StudentAbsenceRecord {
   bool get isBarred => status == AbsenceWarningStatus.barred;
   bool get isNearDanger => status == AbsenceWarningStatus.danger;
 
-  /// Số slot tối đa sinh viên CÒN ĐƯỢC PHÉP VẮNG trước khi chính thức chạm ngưỡng cấm thi
+  /// Số slot tối đa sinh viên CÒN ĐƯỢC PHÉP VẮNG trước khi chính thức vượt quá 20% (bị cấm thi)
+  /// Ví dụ môn 20 slot (được nghỉ tối đa 4 slot):
+  /// - Đã vắng 4 slot (20%): còn 0 buổi được phép nghỉ
+  /// - Đã vắng 3 slot: còn 1 buổi được phép nghỉ
+  /// - Đã vắng 5 slot (> 20%): còn 0 buổi (đã cấm thi)
   int get remainingAllowedSlots {
-    final thresholdInt = barredThreshold.ceil();
-    final remaining = thresholdInt - totalAbsentSlots;
+    final remaining = maxAllowedAbsentSlots - totalAbsentSlots;
     return remaining < 0 ? 0 : remaining;
   }
 }
@@ -124,7 +131,7 @@ class CourseAbsenceTracker {
   }
 
   /// Phân bổ số buổi vắng tích lũy thực tế dựa trên Email định danh duy nhất của sinh viên.
-  /// Đảm bảo trong một lớp học luôn có sinh viên nhóm Cấm thi (>=20%), nhóm Nguy cơ (gần 20%), và nhóm An toàn.
+  /// Đảm bảo trong một lớp học luôn có sinh viên nhóm Cấm thi (> 20%), nhóm Nguy cơ (chạm hoặc gần 20%), và nhóm An toàn.
   static int _calculateDeterministicBaseAbsence(String emailKey, int totalSlots) {
     var hash = 17;
     for (final unit in emailKey.codeUnits) {
@@ -132,19 +139,20 @@ class CourseAbsenceTracker {
     }
 
     final modulo = hash % 100;
-    final threshold = (totalSlots * 0.20).ceil(); // ví dụ 30 slot -> 6 slot
+    final maxAllowed = (totalSlots * 0.20).floor(); // ví dụ 20 slot -> 4 slot, 30 slot -> 6 slot
+    final barredSlots = maxAllowed + 1; // vắng quá 20% -> 5 slot (20 slot), 7 slot (30 slot)
 
-    // 8% sinh viên vắng vượt ngưỡng cấm thi (ví dụ 6 - 7 slot)
+    // 8% sinh viên vắng vượt quá 20% cấm thi (ví dụ 5 - 6 slot với môn 20; 7 - 8 slot với môn 30)
     if (modulo < 8) {
-      return threshold + (hash % 2); // 6 hoặc 7
+      return barredSlots + (hash % 2);
     }
-    // 12% sinh viên vắng gần ngưỡng (ví dụ 4 - 5 slot)
+    // 12% sinh viên vắng chạm hoặc gần ngưỡng 20% (ví dụ 3 - 4 slot với môn 20; 5 - 6 slot với môn 30)
     else if (modulo < 20) {
-      return (threshold - 1) - (hash % 2); // 4 hoặc 5
+      return maxAllowed - (hash % 2);
     }
-    // 25% sinh viên vắng 2 - 3 slot (mức độ trung bình)
+    // 25% sinh viên vắng 2 slot (mức độ an toàn)
     else if (modulo < 45) {
-      return 2 + (hash % 2);
+      return 2;
     }
     // 55% sinh viên vắng 0 - 1 slot (chuyên cần tốt)
     else {

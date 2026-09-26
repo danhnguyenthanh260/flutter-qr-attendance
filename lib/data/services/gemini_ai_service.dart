@@ -96,24 +96,25 @@ class AttendancePromptBuilder {
       );
       final barredStudents = absenceRecords.where((r) => r.isBarred).toList();
       final dangerStudents = absenceRecords.where((r) => r.isNearDanger).toList();
-      final threshold = (effectiveTotalSlots * 0.20).ceil();
+      final maxAllowed = (effectiveTotalSlots * 0.20).floor();
+      final barredMin = maxAllowed + 1;
 
-      buffer.writeln('\n=== THỐNG KÊ TÍCH LŨY CẢ KỲ & CẢNH BÁO CẤM THI (QUY CHẾ FPTU: VẮNG >= 20% TỔNG SỐ SLOT) ===');
-      buffer.writeln('• Quy định môn học: $effectiveTotalSlots slots/kỳ. Ngưỡng cấm thi: vắng từ $threshold slots trở lên (≥ 20%).');
+      buffer.writeln('\n=== THỐNG KÊ TÍCH LŨY CẢ KỲ & CẢNH BÁO CẤM THI (QUY CHẾ FPTU: VẮNG QUÁ 20% TỔNG SỐ SLOT) ===');
+      buffer.writeln('• Quy định môn học: $effectiveTotalSlots slots/kỳ. Được phép vắng tối đa: $maxAllowed slots (≤ 20%). Cấm thi khi vắng từ $barredMin slots trở lên (> 20%).');
       buffer.writeln('• Email là định danh duy nhất của mỗi sinh viên trong hệ thống.');
 
       if (barredStudents.isNotEmpty) {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI (VẮNG >= 20% TỔNG SỐ SLOT) ---');
+        buffer.writeln('\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI (VẮNG QUÁ 20% TỔNG SỐ SLOT) ---');
         for (var i = 0; i < barredStudents.length; i++) {
           final s = barredStudents[i];
           buffer.writeln('${i + 1}. ${s.studentName} | Email: ${s.email} | Đã vắng: ${s.totalAbsentSlots}/$effectiveTotalSlots slot (${s.absenceRate.toStringAsFixed(1)}%) | Trạng thái: CẤM THI');
         }
       } else {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI: Hiện tại chưa có sinh viên nào vượt ngưỡng $threshold slot (20%).');
+        buffer.writeln('\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI: Hiện tại chưa có sinh viên nào vắng quá 20% (trên $maxAllowed slot).');
       }
 
       if (dangerStudents.isNotEmpty) {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI (VẮNG GẦN 20% - TIỆM CẬN NGƯỠNG) ---');
+        buffer.writeln('\n--- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI (VẮNG GẦN HOẶC CHẠM 20%) ---');
         for (var i = 0; i < dangerStudents.length; i++) {
           final s = dangerStudents[i];
           buffer.writeln('${i + 1}. ${s.studentName} | Email: ${s.email} | Đã vắng: ${s.totalAbsentSlots}/$effectiveTotalSlots slot (${s.absenceRate.toStringAsFixed(1)}%) | Còn được phép nghỉ tối đa: ${s.remainingAllowedSlots} buổi');
@@ -172,10 +173,12 @@ class GeminiRestService implements AttendanceAiService {
         'Bạn là Trợ lý AI phân tích điểm danh chuyên nghiệp cho giảng viên trong hệ thống QR Attendance trường FPT University. '
         'Hãy trả lời ngắn gọn, chính xác, súc tích, văn phong sư phạm và hữu ích bằng Tiếng Việt. '
         'ĐẶC BIỆT LƯU Ý: Email là mã định danh duy nhất của mỗi sinh viên trong hệ thống; luôn hiển thị đầy đủ Email của sinh viên khi nhắc đến tên. '
-        'Theo Quy chế đào tạo FPT University, sinh viên vắng từ 20% tổng số slot của môn học trở lên sẽ BỊ CẤM THI (Barred from Exam). '
-        'Khi được hỏi về sinh viên vắng nhiều, vắng gần 20%, hoặc cấm thi: hãy phân tách rõ ràng 2 nhóm: '
-        '(1) Nhóm BỊ CẤM THI (vắng >= 20% tổng số slot), '
-        '(2) Nhóm NGUY CƠ CẤM THI (vắng gần 20%, tiệm cận ngưỡng) kèm số buổi tối đa còn được phép nghỉ trước khi cấm thi. '
+        'Theo Quy chế đào tạo FPT University, sinh viên được phép vắng tối đa 20% tổng số slot của môn học. '
+        'Vắng đúng 20% vẫn được thi (chạm ngưỡng tối đa, còn 0 buổi). '
+        'Chỉ khi sinh viên vắng QUÁ 20% tổng số slot (> 20%) mới BỊ CẤM THI (Barred from Exam). '
+        'Khi được hỏi về sinh viên vắng nhiều, vắng gần hoặc quá 20%, hoặc cấm thi: hãy phân tách rõ ràng 2 nhóm: '
+        '(1) Nhóm BỊ CẤM THI (vắng quá 20% tổng số slot môn học), '
+        '(2) Nhóm NGUY CƠ CẤM THI (vắng gần hoặc chạm 20%, còn 0-1 buổi) kèm số buổi tối đa còn được phép nghỉ trước khi cấm thi. '
         'Luôn căn cứ hoàn toàn vào DỮ LIỆU ĐIỂM DANH ĐƯỢC CUNG CẤP bên dưới để trả lời đúng sự thật.';
 
     final payload = {
@@ -319,7 +322,8 @@ class LocalAttendanceAiService implements AttendanceAiService {
         lowerPrompt.contains('cảnh báo')) {
       final slotMatch = RegExp(r'Quy định môn học:\s*(\d+)\s*slots/kỳ').firstMatch(context);
       final totalSlots = slotMatch != null ? int.tryParse(slotMatch.group(1)!) ?? 20 : 20;
-      final threshold = (totalSlots * 0.20).ceil();
+      final maxAllowed = (totalSlots * 0.20).floor();
+      final barredMin = maxAllowed + 1;
 
       final lines = context.split('\n');
       final barredLines = <String>[];
@@ -327,10 +331,10 @@ class LocalAttendanceAiService implements AttendanceAiService {
       int mode = 0; // 1: barred, 2: danger
 
       for (final line in lines) {
-        if (line.contains('DANH SÁCH SINH VIÊN BỊ CẤM THI (VẮNG >=')) {
+        if (line.contains('DANH SÁCH SINH VIÊN BỊ CẤM THI')) {
           mode = 1;
           continue;
-        } else if (line.contains('DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI (VẮNG GẦN')) {
+        } else if (line.contains('DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI')) {
           mode = 2;
           continue;
         } else if (line.startsWith('---') || line.startsWith('===')) {
@@ -347,22 +351,24 @@ class LocalAttendanceAiService implements AttendanceAiService {
 
       final buffer = StringBuffer();
       buffer.writeln('🚨 **CẢNH BÁO HỌC VỤ & NGUY CƠ CẤM THI (QUY CHẾ FPTU)**\n');
-      buffer.writeln('📋 *Căn cứ quy chế đào tạo:* Môn học có tổng cộng **$totalSlots slots**. Sinh viên vắng từ **$threshold slots trở lên (≥ 20%)** sẽ **BỊ CẤM THI**.\n'
+      buffer.writeln('📋 *Căn cứ quy chế đào tạo:* Môn học có tổng cộng **$totalSlots slots**. '
+          'Sinh viên được phép vắng tối đa **$maxAllowed slots (≤ 20%)**. '
+          'Chỉ khi vắng **từ $barredMin slots trở lên (> 20%)** mới **BỊ CẤM THI**.\n'
           '*Mỗi sinh viên được định danh duy nhất bằng Email FPT.*\n');
 
       if (barredLines.isNotEmpty) {
-        buffer.writeln('🚫 **NHÓM BỊ CẤM THI (Vắng ≥ 20% tổng số slot):**');
+        buffer.writeln('🚫 **NHÓM BỊ CẤM THI (Vắng quá 20% tổng số slot):**');
         for (final l in barredLines) {
           buffer.writeln('• $l');
         }
       } else {
-        buffer.writeln('✅ **NHÓM BỊ CẤM THI:** Chưa có sinh viên nào chạm hoặc vượt ngưỡng $threshold slot (20%).');
+        buffer.writeln('✅ **NHÓM BỊ CẤM THI:** Hiện tại chưa có sinh viên nào vắng quá 20% (trên $maxAllowed slot).');
       }
 
       buffer.writeln('');
 
       if (dangerLines.isNotEmpty) {
-        buffer.writeln('⚠️ **NHÓM NGUY CƠ CẤM THI (Vắng gần 20% - Tiệm cận ngưỡng):**');
+        buffer.writeln('⚠️ **NHÓM NGUY CƠ CẤM THI (Vắng gần hoặc chạm 20%):**');
         for (final l in dangerLines) {
           buffer.writeln('• $l');
         }
@@ -468,7 +474,8 @@ class LocalAttendanceAiService implements AttendanceAiService {
     final nowFormatted = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
     final totalSlots = classModel?.totalSlots ?? 20;
-    final threshold = (totalSlots * 0.20).ceil();
+    final maxAllowed = (totalSlots * 0.20).floor();
+    final barredMin = maxAllowed + 1;
     final absenceRecords = CourseAbsenceTracker.analyzeClassAbsences(
       currentSummary: summary,
       classModel: classModel,
@@ -506,22 +513,23 @@ class LocalAttendanceAiService implements AttendanceAiService {
     }
     buffer.writeln('');
 
-    buffer.writeln('### 4. Cảnh báo Học vụ & Nguy cơ Cấm thi (Quy chế > 20% tổng số slot)');
-    buffer.writeln('Theo quy chế đào tạo, môn học có **$totalSlots slots**, sinh viên vắng từ **$threshold slots trở lên (≥ 20%)** sẽ bị cấm thi. Mỗi sinh viên được xác nhận bằng **Email định danh duy nhất**:\n');
+    buffer.writeln('### 4. Cảnh báo Học vụ & Nguy cơ Cấm thi (Quy chế vắng quá 20% tổng số slot)');
+    buffer.writeln('Theo quy chế đào tạo, môn học có **$totalSlots slots**, sinh viên được phép vắng tối đa **$maxAllowed slots (≤ 20%)**. '
+        'Chỉ khi vắng từ **$barredMin slots trở lên (> 20%)** mới bị cấm thi. Mỗi sinh viên được xác nhận bằng **Email định danh duy nhất**:\n');
 
     if (barredStudents.isNotEmpty) {
-      buffer.writeln('**🚫 Danh sách sinh viên BỊ CẤM THI (Vắng ≥ 20%):**');
+      buffer.writeln('**🚫 Danh sách sinh viên BỊ CẤM THI (Vắng quá 20%):**');
       for (var i = 0; i < barredStudents.length; i++) {
         final s = barredStudents[i];
         buffer.writeln('${i + 1}. **${s.studentName}** - Email: `${s.email}` - Vắng: **${s.totalAbsentSlots}/$totalSlots slot** (${s.absenceRate.toStringAsFixed(1)}%)');
       }
     } else {
-      buffer.writeln('✅ Hiện tại chưa có sinh viên nào vượt ngưỡng cấm thi.');
+      buffer.writeln('✅ Hiện tại chưa có sinh viên nào vắng quá 20% (vượt quá $maxAllowed slot).');
     }
     buffer.writeln('');
 
     if (dangerStudents.isNotEmpty) {
-      buffer.writeln('**⚠️ Danh sách sinh viên NGUY CƠ CẤM THI (Vắng gần 20%):**');
+      buffer.writeln('**⚠️ Danh sách sinh viên NGUY CƠ CẤM THI (Vắng gần hoặc chạm 20%):**');
       for (var i = 0; i < dangerStudents.length; i++) {
         final s = dangerStudents[i];
         buffer.writeln('${i + 1}. **${s.studentName}** - Email: `${s.email}` - Vắng: **${s.totalAbsentSlots}/$totalSlots slot** (${s.absenceRate.toStringAsFixed(1)}%) - *Còn được phép nghỉ: ${s.remainingAllowedSlots} buổi*');

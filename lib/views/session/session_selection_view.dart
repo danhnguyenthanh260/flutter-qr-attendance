@@ -401,7 +401,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
             _buildInfoRow(
               icon: Icons.fact_check_outlined,
               label: 'Thời lượng môn học:',
-              value: '${selectedClass.totalSlots} slots (Cấm thi nếu vắng ≥ ${(selectedClass.totalSlots * 0.20).ceil()} buổi)',
+              value: '${selectedClass.totalSlots} slots (Nghỉ tối đa ${(selectedClass.totalSlots * 0.20).floor()} buổi; cấm thi nếu vắng > 20%)',
             ),
           ] else ...[
             const Center(

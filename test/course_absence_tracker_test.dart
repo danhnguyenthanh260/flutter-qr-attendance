@@ -22,7 +22,7 @@ void main() {
       expect(record.remainingAllowedSlots, 1);
     });
 
-    test('Transitions from danger to barred when absent in current session', () {
+    test('Student with exactly 20% absence is NOT barred (remains in danger with 0 allowed slots left)', () {
       const record = StudentAbsenceRecord(
         studentName: 'Trần Thị B',
         email: 'binhttse1702@fpt.edu.vn',
@@ -34,7 +34,25 @@ void main() {
 
       expect(record.totalAbsentSlots, 6);
       expect(record.absenceRate, 20.0);
-      expect(record.isBarred, isTrue);
+      expect(record.isBarred, isFalse); // Vắng đúng 20% vẫn KHÔNG bị cấm thi
+      expect(record.isNearDanger, isTrue); // Chạm trần nguy cơ cao
+      expect(record.status, AbsenceWarningStatus.danger);
+      expect(record.remainingAllowedSlots, 0); // Còn 0 buổi được nghỉ
+    });
+
+    test('Student exceeding 20% absence is barred from exam', () {
+      const record = StudentAbsenceRecord(
+        studentName: 'Trần Thị B',
+        email: 'binhttse1702@fpt.edu.vn',
+        emailKey: 'binhttse1702',
+        baseAbsentSlots: 6,
+        isAbsentCurrentSession: true,
+        totalSlots: 30,
+      );
+
+      expect(record.totalAbsentSlots, 7);
+      expect(record.absenceRate, closeTo(23.33, 0.01));
+      expect(record.isBarred, isTrue); // Vắng quá 20% -> BỊ CẤM THI
       expect(record.isNearDanger, isFalse);
       expect(record.status, AbsenceWarningStatus.barred);
       expect(record.remainingAllowedSlots, 0);
@@ -57,8 +75,8 @@ void main() {
       expect(record.remainingAllowedSlots, 5);
     });
 
-    test('Supports custom total slots (e.g. 20 slots where threshold is 4)', () {
-      const record = StudentAbsenceRecord(
+    test('Supports custom total slots (e.g. 20 slots where max allowed is 4, barred when >= 5)', () {
+      const record20Safe = StudentAbsenceRecord(
         studentName: 'Phạm Đức D',
         email: 'duclp@fpt.edu.vn',
         emailKey: 'duclp',
@@ -67,10 +85,23 @@ void main() {
         totalSlots: 20,
       );
 
-      expect(record.barredThreshold, 4.0);
-      expect(record.totalAbsentSlots, 4);
-      expect(record.absenceRate, 20.0);
-      expect(record.isBarred, isTrue);
+      expect(record20Safe.barredThreshold, 4.0);
+      expect(record20Safe.maxAllowedAbsentSlots, 4);
+      expect(record20Safe.totalAbsentSlots, 4);
+      expect(record20Safe.absenceRate, 20.0);
+      expect(record20Safe.isBarred, isFalse); // 4/20 = 20% -> KHÔNG cấm thi
+      expect(record20Safe.isNearDanger, isTrue);
+      expect(record20Safe.remainingAllowedSlots, 0);
+
+      const record20Barred = StudentAbsenceRecord(
+        studentName: 'Phạm Đức D',
+        email: 'duclp@fpt.edu.vn',
+        emailKey: 'duclp',
+        baseAbsentSlots: 5,
+        isAbsentCurrentSession: false,
+        totalSlots: 20,
+      );
+      expect(record20Barred.isBarred, isTrue); // 5/20 = 25% > 20% -> CẤM THI
     });
   });
 

@@ -34,7 +34,7 @@ class AiAssistantProvider extends ChangeNotifier {
         content:
             'Xin chào Thầy/Cô. Tôi là Trợ lý Chuyên cần & Học vụ.\n\n'
             'Hệ thống hỗ trợ Giảng viên các nghiệp vụ chính:\n'
-            '• Cảnh báo học vụ: Danh sách sinh viên vắng tiệm cận 20% và sinh viên bị cấm thi theo môn.\n'
+            '• Cảnh báo học vụ: Danh sách sinh viên vắng quá 20% (bị cấm thi) và chạm 20% (nguy cơ).\n'
             '• Điểm danh thời gian thực: Tra cứu sinh viên vắng mặt hoặc chưa quét mã trong ca học.\n'
             '• Đánh giá chuyên cần: Thống kê tỷ lệ đi học và phát hiện các lượt quét mã trùng lặp.\n'
             '• Xuất báo cáo: Tổng hợp và tạo văn bản báo cáo chuyên cần chi tiết theo từng lớp.\n\n'
