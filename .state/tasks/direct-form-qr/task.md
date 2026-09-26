@@ -21,3 +21,9 @@
 - Syntax checks, 24 backend tests and git diff whitespace check pass.
 - Live API probe found no active session; it did not create a session or submit attendance. Phone opening and accepted real roster submission remain unverified.
 - Existing Windows app consumes the new form_url without a rebuild. See docs/direct-form-qr.md for the contract and compatible rollback procedure.
+
+## Windows shortcut correction — 2026-09-26
+- User reported the Windows build was old. Desktop `QR Attendance - Test.lnk` actually targeted the Debug executable in `flutter-qr-attendance-qr-ticket-build`, not the current worktree.
+- Built current source 6cbf224 with private trial defines as release 1.2.1+20260926; Flutter build succeeded. Packaged at `build/trial-1.2.1`, preserving local roster-sources.
+- Updated the existing Test shortcut and added `QR Attendance 1.2.1.lnk` to this release. Launched PID 10656 and verified its executable path.
+- SHA256: 702AD4AE30B61B5900EDB0E3F61053A0A5126218053CE10B78E4BD7F30753764. Packaging/shortcut correction only; no additional feature completion or live attendance acceptance claimed.
