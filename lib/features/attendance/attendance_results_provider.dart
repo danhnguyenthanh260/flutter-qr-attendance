@@ -22,6 +22,22 @@ enum AttendanceDataStatus {
 class AttendanceResultsProvider extends ChangeNotifier {
   static const Duration defaultRefreshInterval = Duration(seconds: 12);
 
+  final Listenable? catalogChanges;
+  final List<ClassModel> Function()? catalogSource;
+  void _syncCatalog() {
+    final next = catalogSource?.call();
+    if (next == null || identical(next, _classes) || _isDisposed) return;
+    final previous = _selectedClass?.id;
+    _classes = next;
+    _selectedClass =
+        next.where((c) => c.id == previous).firstOrNull ?? next.firstOrNull;
+    if (_isInitialized && previous != _selectedClass?.id) {
+      _reloadScope();
+    } else {
+      _notify();
+    }
+  }
+
   final AttendanceRepository _service;
   final DateTime Function() _clock;
   final AttendanceSession? Function()? preferredSession;
@@ -51,12 +67,15 @@ class AttendanceResultsProvider extends ChangeNotifier {
 
   AttendanceResultsProvider({
     required this._service,
+    this.catalogChanges,
+    this.catalogSource,
     DateTime Function()? clock,
     this.preferredSession,
     bool autoRefresh = true,
     this.refreshInterval = defaultRefreshInterval,
   }) : _clock = clock ?? DateTime.now,
        _autoRefreshEnabled = autoRefresh {
+    catalogChanges?.addListener(_syncCatalog);
     _selectedDate = dateKey(_clock());
   }
 
@@ -89,6 +108,9 @@ class AttendanceResultsProvider extends ChangeNotifier {
 
     try {
       _classes = await _service.getClasses();
+      if (catalogSource?.call().isNotEmpty ?? false) {
+        _classes = catalogSource!();
+      }
     } catch (error) {
       _isInitialized = false;
       _classes = const [];
@@ -189,6 +211,12 @@ class AttendanceResultsProvider extends ChangeNotifier {
     _lastUpdatedAt = null;
     _notify();
 
+    if (_selectedClass == null) {
+      _sessions = const [];
+      _status = AttendanceDataStatus.noClasses;
+      _notify();
+      return;
+    }
     final preferred = _preferredSessionForCurrentScope(preferredSession);
     if (preferred != null) {
       _selectedClass = _classes.firstWhere(
@@ -353,6 +381,7 @@ class AttendanceResultsProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    catalogChanges?.removeListener(_syncCatalog);
     _isDisposed = true;
     _cancelTimer();
     super.dispose();

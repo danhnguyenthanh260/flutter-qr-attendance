@@ -75,6 +75,7 @@ class AttendanceScope {
 }
 
 class AttendanceSummary {
+  final bool hasLegacyRoster;
   final AttendanceScope scope;
   final List<AttendanceSession> sessions;
   final List<StudentAttendanceRow> rows;
@@ -84,6 +85,7 @@ class AttendanceSummary {
   final DateTime asOf;
 
   const AttendanceSummary({
+    this.hasLegacyRoster = false,
     required this.scope,
     required this.sessions,
     required this.rows,
@@ -150,13 +152,17 @@ class AttendanceSummary {
     final reference = ordered.first.session;
 
     final roster = _mergeRosters(ordered);
-    final rosterByKey = {for (final entry in roster) entry.emailKey: entry};
+    final rosterByKey = {
+      for (final snapshot in ordered)
+        for (final entry in snapshot.roster) entry.emailKey: entry,
+    };
     final acceptedByKey = _earliestAcceptedByEmail(ordered);
     final attempts = _allAttempts(ordered);
 
-    final finalized = sessions.every(
-      (session) => session.status == SessionStatus.closed,
-    );
+    final legacyRoster = ordered.any((s) => s.rosterSnapshotKind != 'at_open');
+    final finalized =
+        !legacyRoster &&
+        sessions.every((session) => session.status == SessionStatus.closed);
 
     final retryCounts = <String, int>{};
     final rejectedCounts = <String, int>{};
@@ -168,7 +174,20 @@ class AttendanceSummary {
     }
 
     final rows = roster.map((student) {
-      final accepted = acceptedByKey[student.emailKey];
+      AttendanceRecord? accepted;
+      for (final snapshot in ordered) {
+        final member = snapshot.roster
+            .where((r) => r.id == student.id)
+            .firstOrNull;
+        if (member == null) continue;
+        for (final record in snapshot.attendance.where(
+          (a) => a.emailKey == member.emailKey,
+        )) {
+          if (accepted == null || _isEarlier(record, accepted)) {
+            accepted = record;
+          }
+        }
+      }
       final status = accepted != null
           ? StudentAttendanceStatus.present
           : finalized
@@ -208,6 +227,7 @@ class AttendanceSummary {
           ..sort((a, b) => a.email.compareTo(b.email));
 
     return AttendanceSummary(
+      hasLegacyRoster: legacyRoster,
       scope: AttendanceScope(
         classId: reference.classId,
         className: reference.className,
@@ -234,7 +254,7 @@ class AttendanceSummary {
     final merged = <String, RosterEntry>{};
     for (final snapshot in ordered) {
       for (final entry in snapshot.roster) {
-        merged[entry.emailKey] = entry;
+        merged[entry.id] = entry;
       }
     }
     return merged.values.toList(growable: false);

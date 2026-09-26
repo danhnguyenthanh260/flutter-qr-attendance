@@ -121,6 +121,11 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<SessionProvider>();
+    if (provider.workspaceOverview != null) _data = provider.workspaceOverview!;
+    if (_selected != null &&
+        !provider.classes.any((c) => c.id == _selected!.classModel.id)) {
+      _selected = null;
+    }
     final selected = _selected;
     if (selected != null) {
       return Column(

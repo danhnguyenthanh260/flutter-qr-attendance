@@ -99,6 +99,13 @@ var AttendanceDataService = (function (Repository) {
     return this._mutate(function () { return this._repository.getQrReceipt(sessionId, requestId); });
   };
 
+  Service.prototype.getClassRoster = function (classId) {
+    return this._mutate(function () { return this._repository.getClassRoster(classId); });
+  };
+  Service.prototype.updateRoster = function (input) {
+    return this._mutate(function () { return this._repository.updateRoster(input); });
+  };
+
   Service.prototype.issueQrTicket = function (input) {
     return this._mutate(function () {
       return this._repository.issueQrTicket(input);

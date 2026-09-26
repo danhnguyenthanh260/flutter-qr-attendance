@@ -32,6 +32,10 @@ void main() {
       SessionStatus status,
       List<AttendanceRecord> records,
     ) => TeachingOverview(
+      sessionRosters: {
+        's': [student],
+      },
+      rosterSources: {'s': 'at_open'},
       slots: [slot, other],
       roster: [student],
       sessions: [session.copyWith(status: status)],
@@ -51,5 +55,63 @@ void main() {
     expect(accepted.status(student, slot), 'P');
     expect(accepted.present(slot), 1);
     expect(accepted.present(other), 0);
+  });
+
+  test('historical matrix uses snapshot identity after email change and separates nonmembers', () {
+    const slot = SessionSlot(
+      slotNumber: 1,
+      timeRange: '07:00',
+      date: '2026-09-26',
+    );
+    const old = RosterEntry(
+      id: 'stable',
+      classId: 'c',
+      email: 'old@example.edu',
+      emailKey: 'old@example.edu',
+    );
+    const changed = RosterEntry(
+      id: 'stable',
+      classId: 'c',
+      email: 'new@example.edu',
+      emailKey: 'new@example.edu',
+    );
+    const added = RosterEntry(
+      id: 'new',
+      classId: 'c',
+      email: 'other@example.edu',
+      emailKey: 'other@example.edu',
+    );
+    final session = AttendanceSession(
+      id: 's',
+      classId: 'c',
+      className: 'Class',
+      slot: slot,
+      openedAt: DateTime(2026),
+      status: SessionStatus.closed,
+    );
+    TeachingOverview data(String kind, List<AttendanceRecord> records) =>
+        TeachingOverview(
+          slots: [slot],
+          roster: [changed, added],
+          sessions: [session],
+          attendance: records,
+          sessionRosters: {
+            's': [old],
+          },
+          rosterSources: {'s': kind},
+        );
+    final current = data('at_open', [
+      const AttendanceRecord(
+        id: 'a',
+        sessionId: 's',
+        email: 'old@example.edu',
+        emailKey: 'old@example.edu',
+      ),
+    ]);
+    expect(current.status(changed, slot), 'P');
+    expect(current.status(added, slot), '∅');
+    expect(current.rosterFor(slot).length, 1);
+    expect(data('legacy_baseline', []).status(changed, slot), '?');
+    expect(data('at_open', []).status(changed, slot), 'A');
   });
 }

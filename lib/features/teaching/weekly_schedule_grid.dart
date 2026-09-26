@@ -122,7 +122,7 @@ class WeeklyScheduleGrid extends StatelessWidget {
                 Text(
                   lesson.data == null
                       ? 'Chưa tải danh sách sinh viên'
-                      : '${lesson.data!.present(lesson.slot)}/${lesson.data!.roster.length} đã điểm danh',
+                      : '${lesson.data!.present(lesson.slot)}/${lesson.data!.rosterFor(lesson.slot).length} đã điểm danh',
                 ),
                 Text(lesson.data == null ? 'Lịch lưu tạm' : status),
               ],

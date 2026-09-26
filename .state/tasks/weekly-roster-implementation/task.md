@@ -1,5 +1,7 @@
 # Weekly roster implementation — 2026-09-26
 
+Latest audit: user flagged Attendance and Class Data lagging the calendar flow. Source review confirms local-file-only roster preview, no export/CRUD, frozen per-tab catalog, import-conflict restriction, and historical session results coupled to current active roster. Integrated repair requirements and acceptance recorded in docs/design/roster-management-audit-2026-09-26.md. Implemented and released as Windows 1.5.0 / teacher v23; see docs/design/verification-1.5.0.md for evidence and legacy-history/network limits. No live roster mutation used for QA.
+
 User approved implementation after FAP/data research. Workspace: flutter-qr-attendance-qr-grants, branch feature/startup-navigation-roster.
 
 Merged origin/main bcd85b3 via 022c1a8; resolved provider/view path conflicts preserving feature architecture and session verification. Incoming navigation tests ported and validated.
@@ -53,3 +55,12 @@ User explicitly requested cleanup after opening the sample PRM392 lesson. Set Cl
 
 ## Additional test members — 26/09/2026
 User explicitly supplied two test identities and requested membership in every class. Added four nonduplicate rows to Test_PRM392 Roster A128:J131 across both active imported classes; preserved supplied email/roll/member/name exactly and noted test-only membership. Six disabled sample classes left disabled. All written values read back and compared; live workspace API confirms PRM393 31 students and PRN232 39 students, 14 slots each, existing active session preserved. No attendance submission or code/build change. Personal identities remain only in Sheet, not this public state record.
+
+## Windows 1.4.5 and Sheet organization
+Built latest main-derived code (4658889) as Windows 1.4.5+20260926; 177 Flutter tests, 35 backend tests, analyzer and architecture passed. Canonical desktop shortcut updated and app launched. This build does not implement proposed roster management/export features. Added Hướng dẫn A1:C37, verified every value and Google-rendered layout. Visible tabs now Hướng dẫn, Classes, Roster, ClassSlots; 16 system/legacy tabs hidden only, no renames/deletes or data changes. Live workspace read confirms PRM31/PRN39 students, 14 lessons each, existing active session preserved. Teacher deployment unchanged at v22.
+
+
+## Roster management — Windows 1.5.0
+Implemented live roster CRUD with soft deactivation/reactivation, template/full-roster XML export, selected-class import diff, optimistic revisions and no automatic POST replay. Shared catalog propagation and student-by-lesson attendance matrix use session roster snapshots. New sessions persist original membership; legacy sessions require explicit baseline acknowledgement and display uncertain absence. Block class roster edits while an attendance session is open/closing. Original new-class import cannot bypass update safeguards for an active existing class.
+
+184 Flutter / 40 backend tests passed; analyzer and architecture clean. Teacher v23 deployed, student v10 unchanged. Final Windows package build/trial-1.5.0-release; canonical shortcut updated. Native real PRN roster (39) observed. User took over app navigation, so no further native input or forced close. Final package removes one redundant workspace request; its widget test/analyzer passed. Hướng dẫn updated and read back. Google ContentService timeout/404 persists intermittently; native manual refresh succeeded in about5.2s. No claim of resolved upstream delivery or live roster-write/Form end-to-end verification.

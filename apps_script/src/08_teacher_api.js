@@ -16,6 +16,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'GET') {
       switch (action) {
+        case 'class_roster':
+          return Domain.success(service.getClassRoster(Domain.requireString(payload.class_id,'class_id')));
         case 'qr_receipt':
           return Domain.success(StudentService.getQrReceipt(service, context.studentConfig,
             Domain.requireString(payload.session_id, 'session_id'),
@@ -46,6 +48,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'POST') {
       switch (action) {
+        case 'update_roster':
+          return Domain.success(service.updateRoster(payload));
         case 'import_roster':
           return Domain.success(service.importRoster(payload));
         case 'start_session':

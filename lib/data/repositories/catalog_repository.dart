@@ -25,6 +25,16 @@ class CatalogRepository {
   final Future<List<SessionSlot>> Function(String) _loadSlots;
   final _CatalogCache<ClassModel> _classes;
   final _CatalogCache<SessionSlot> _slots;
+  void acceptWorkspace(
+    List<ClassModel> classes,
+    Map<String, List<SessionSlot>> slots,
+  ) {
+    _classes.accept('classes', classes);
+    for (final entry in slots.entries) {
+      _slots.accept('slots:${entry.key}', entry.value);
+    }
+  }
+
   Future<List<ClassModel>> refreshClasses() =>
       _classes.refresh('classes', _loadClasses);
   Future<List<ClassModel>> getClasses() =>
@@ -46,6 +56,10 @@ class _CatalogCache<T> {
   final Map<String, dynamic> Function(T) encode;
   final _cache = <String, ({DateTime saved, List<T> items})>{};
   final _pending = <String, Future<List<T>>>{};
+
+  void accept(String key, List<T> items) {
+    _cache[key] = (saved: clock(), items: List<T>.unmodifiable(items));
+  }
 
   Future<List<T>> refresh(String key, Future<List<T>> Function() load) async {
     final pending = _pending[key];

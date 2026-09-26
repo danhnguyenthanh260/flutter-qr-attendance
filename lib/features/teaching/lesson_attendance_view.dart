@@ -142,7 +142,7 @@ class _LessonAttendanceViewState extends State<LessonAttendanceView> {
               ),
             ),
             Text(
-              '${data?.present(widget.slot) ?? 0}/${data?.roster.length ?? 0} sinh viên đã điểm danh',
+              '${data?.present(widget.slot) ?? 0}/${data?.rosterFor(widget.slot).length ?? 0} sinh viên đã điểm danh',
             ),
             TextButton.icon(
               onPressed: widget.refreshing ? null : widget.onRefresh,

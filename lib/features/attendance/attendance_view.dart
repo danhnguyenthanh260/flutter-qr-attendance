@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_colors.dart';
+import 'attendance_matrix_view.dart';
 import 'attendance_results_provider.dart';
 import 'history_attendance_view.dart';
 import 'today_attendance_view.dart';
@@ -15,8 +16,8 @@ class AttendanceView extends StatefulWidget {
 }
 
 class _AttendanceViewState extends State<AttendanceView> {
-  final Set<int> _visitedTabs = {0};
-  int _selectedIndex = 0;
+  final Set<int> _visitedTabs = {0, 2};
+  int _selectedIndex = 2;
 
   @override
   void initState() {
@@ -60,6 +61,13 @@ class _AttendanceViewState extends State<AttendanceView> {
           child: Row(
             children: [
               _TabButton(
+                icon: Icons.table_chart_outlined,
+                label: 'Bảng theo buổi',
+                isSelected: _selectedIndex == 2,
+                onTap: () => _select(2),
+              ),
+              const SizedBox(width: 8),
+              _TabButton(
                 icon: Icons.today_rounded,
                 label: 'Điểm danh hôm nay',
                 isSelected: _selectedIndex == 0,
@@ -83,6 +91,7 @@ class _AttendanceViewState extends State<AttendanceView> {
               _visitedTabs.contains(1)
                   ? const HistoryAttendanceView()
                   : const SizedBox.shrink(),
+              const AttendanceMatrixView(),
             ],
           ),
         ),

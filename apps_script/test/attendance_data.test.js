@@ -46,6 +46,10 @@ class MemorySheetGateway {
     return callback();
   }
 
+  writeRecords(sheetName, changes) {
+    changes.forEach(c => { this._table(sheetName)[c.rowNumber - 2] = {...c.data}; });
+  }
+
   seed(sheetName, data) {
     this._table(sheetName).push({ ...data });
   }
@@ -479,10 +483,11 @@ test('teacher API issues a server-side QR claim URL only with teacher authentica
   assert.match(result.data.form_url, /route=claim/);
   assert.equal(result.data.valid_seconds, 30);
 });
-function directFixture() {
+function directFixture(extraStudent) {
   const fixture = createFixture();
   fixture.gateway.seed(Domain.SHEETS.roster, {roster_id: 'R_SECOND', class_id: 'CLASS_1',
     email: 'second@example.edu', email_key: 'second@example.edu', student_name: 'Second', is_active: 'true'});
+  if (extraStudent) fixture.gateway.seed(Domain.SHEETS.roster, extraStudent);
   const session = fixture.service.startSession(startInput());
   const ticket = fixture.service.issueQrTicket({session_id: session.id, valid_seconds: 30,
     direct_form: true, request_id: 'direct_request_123456'});
@@ -508,8 +513,7 @@ test('direct QR links to the prefilled Form without any Apps Script intermediary
 });
 
 test('direct shared code accepts multiple roster students, rejects duplicate email and trigger replay', () => {
-  const {service, gateway, ticket, setNow} = directFixture();
-  gateway.seed(Domain.SHEETS.roster, {roster_id: 'R_THIRD', class_id: 'CLASS_1',
+  const {service, gateway, ticket, setNow} = directFixture({roster_id: 'R_THIRD', class_id: 'CLASS_1',
     email: 'third@example.edu', email_key: 'third@example.edu', student_name: 'Third', is_active: 'true'});
   setNow('2026-09-19T08:01:00Z');
   const input = directSubmission(ticket);
@@ -583,6 +587,8 @@ test('direct trigger replay recovers a write interrupted after attendance append
 
 test('teacher API passes direct-form gateway and legacy claim still works beside new tickets', () => {
   const {service, gateway, setNow} = createFixture();
+  gateway.seed(Domain.SHEETS.roster, {roster_id: 'MIGRATE', class_id: 'CLASS_1', email: 'migration@example.edu',
+    email_key: 'migration@example.edu', student_name: 'Migration', is_active: 'true'});
   const session = service.startSession(startInput());
   const legacy = service.issueQrTicket({session_id: session.id, valid_seconds: 30});
   const grant = service.claimQrTicket({ticket_id: legacy.ticket_id, grace_seconds: 120});
@@ -594,8 +600,6 @@ test('teacher API passes direct-form gateway and legacy claim still works beside
   assert.equal(response.ok, true);
   assert.equal(response.data.flow, 'direct_form');
   assert.match(response.data.form_url, /FORM_TKT_REQ_live_contract/);
-  gateway.seed(Domain.SHEETS.roster, {roster_id: 'MIGRATE', class_id: 'CLASS_1', email: 'migration@example.edu',
-    email_key: 'migration@example.edu', student_name: 'Migration', is_active: 'true'});
   setNow('2026-09-19T08:00:40Z');
   assert.equal(service.processFormSubmission({form_response_id: 'LEGACY', grant_id: grant.grant_id,
     email: 'migration@example.edu', submitted_at: '2026-09-19T08:00:39Z'}).accepted, true);
@@ -733,5 +737,64 @@ test('QR receipt is read-only, scoped and never extends ticket lifetime', () => 
   assert.equal(service.getQrReceipt(session.id,'different_request_123456'),null);
   service.requestCloseSession(session.id);
   assert.throws(()=>service.getQrReceipt(session.id,requestId),{code:'session_not_active'});
+});
+
+function patchStudent(overrides = {}) {
+  return {id:'ROSTER_1',roll_number:'SE000001',email:'new@example.edu',student_name:'Updated Name',member_code:'Updated',is_active:true,...overrides};
+}
+test('roster update is revision guarded, blocks active sessions, and preserves old session identity', () => {
+  const {service,gateway,setNow} = createFixture();
+  const session = service.startSession(startInput());
+  const before = service.getClassRoster('CLASS_1');
+  assert.throws(()=>service.updateRoster({class_id:'CLASS_1',revision:before.revision,students:[patchStudent()]}),{code:'roster_session_open'});
+  service.requestCloseSession(session.id);
+  setNow('2026-09-19T08:10:00Z');
+  service.listSessions({});
+  const updated = service.updateRoster({class_id:'CLASS_1',revision:before.revision,students:[patchStudent()]});
+  assert.equal(updated.students[0].email,'new@example.edu');
+  assert.equal(service.getSessionResults(session.id).roster[0].email,'student@example.edu');
+  assert.equal(service.getSessionResults(session.id).roster_snapshot_kind,'at_open');
+  assert.throws(()=>service.updateRoster({class_id:'CLASS_1',revision:before.revision,students:[patchStudent()]}),{code:'roster_conflict'});
+  const inactive = service.updateRoster({class_id:'CLASS_1',revision:updated.revision,students:[patchStudent({is_active:false})]});
+  assert.equal(service.listClasses()[0].total_students,0);
+  assert.equal(service.getSessionResults(session.id).roster.length,1);
+  service.updateRoster({class_id:'CLASS_1',revision:inactive.revision,students:[patchStudent()]});
+  assert.equal(service.listClasses()[0].total_students,1);
+  assert.equal(gateway.rows(Domain.SHEETS.roster).length,1);
+});
+test('bulk roster validation is atomic and omissions preserve existing students', () => {
+  const {service,gateway} = createFixture();
+  const before = service.getClassRoster('CLASS_1');
+  assert.throws(()=>service.updateRoster({class_id:'CLASS_1',revision:before.revision,students:[patchStudent(),patchStudent({id:'',roll_number:'SE000002'})]}),{code:'duplicate_email'});
+  assert.equal(gateway.rows(Domain.SHEETS.roster)[0].email,'student@example.edu');
+  const added = service.updateRoster({class_id:'CLASS_1',revision:before.revision,students:[patchStudent({id:'',roll_number:'SE000002'})]});
+  assert.equal(added.students.length,2);
+  assert.equal(added.students[0].email,'student@example.edu');
+  assert.throws(()=>service.updateRoster({class_id:'CLASS_1',revision:added.revision,students:[patchStudent({id:'',roll_number:'SE000002'})]}),{code:'roster_conflict'});
+});
+test('legacy sessions require acknowledgement and freeze baseline before a roster write', () => {
+  const {service,gateway,setNow} = createFixture();
+  const session = service.startSession(startInput());
+  service.requestCloseSession(session.id);setNow('2026-09-19T08:10:00Z');service.listSessions({});
+  gateway.update(Domain.SHEETS.sessions,2,{roster_snapshot:'',roster_snapshot_kind:''});
+  const before=service.getClassRoster('CLASS_1');
+  const input={class_id:'CLASS_1',revision:before.revision,students:[patchStudent()]};
+  assert.throws(()=>service.updateRoster(input),{code:'legacy_snapshot_required'});
+  service.updateRoster({...input,accept_legacy_snapshot:true});
+  const old=service.getSessionResults(session.id);
+  assert.equal(old.roster_snapshot_kind,'legacy_baseline');assert.equal(old.roster[0].email,'student@example.edu');
+});
+test('students added directly after opening are not members of the frozen session', () => {
+  const {service,gateway,ticket,setNow}=directFixture();
+  gateway.seed(Domain.SHEETS.roster,{roster_id:'LATE',class_id:'CLASS_1',email:'late@example.edu',email_key:'late@example.edu',student_name:'Late',is_active:true});
+  setNow('2026-09-19T08:01:00Z');
+  assert.equal(service.processFormSubmission(directSubmission(ticket,{email:'late@example.edu'})).outcome,'email_not_in_roster');
+});
+test('teacher roster read and mutation reject missing auth', () => {
+  const {service}=createFixture();
+  const context={config:{teacherApiKey:'secret'},service};
+  assert.throws(()=>TeacherApiContract.execute('GET',{action:'class_roster',class_id:'CLASS_1'},context),{code:'unauthorized'});
+  assert.throws(()=>TeacherApiContract.execute('POST',{action:'update_roster',class_id:'CLASS_1'},context),{code:'unauthorized'});
+  assert.equal(TeacherApiContract.execute('GET',{teacher_key:'secret',action:'class_roster',class_id:'CLASS_1'},context).data.students.length,1);
 });
 }

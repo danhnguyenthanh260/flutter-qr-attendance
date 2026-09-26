@@ -91,6 +91,26 @@ var GoogleSheetsGateway = (function () {
     return { rowNumber: rowNumber, data: next };
   };
 
+  // Apply an already validated roster patch in one range write under the lock.
+  Gateway.prototype.writeRecords = function (sheetName, changes) {
+    if (!changes.length) return;
+    delete this._readCache[sheetName];
+    var sheet = this._requireSheet(sheetName);
+    var headers = this._headersForSheet(sheetName, sheet);
+    var first = Math.min.apply(null, changes.map(function (c) { return c.rowNumber; }));
+    var last = Math.max.apply(null, changes.map(function (c) { return c.rowNumber; }));
+    if (last > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), last - sheet.getMaxRows());
+    var range = sheet.getRange(first, 1, last - first + 1, headers.length);
+    var values = range.getValues(), formulas = range.getFormulas();
+    values.forEach(function (row, i) { row.forEach(function (_, j) { if (formulas[i][j]) values[i][j] = formulas[i][j]; }); });
+    changes.forEach(function (change) {
+      headers.forEach(function (header, j) {
+        if (Object.prototype.hasOwnProperty.call(change.data, header)) values[change.rowNumber - first][j] = change.data[header];
+      });
+    });
+    range.setValues(values);
+  };
+
   Gateway.prototype.withLock = function (callback) {
     var lock = LockService.getScriptLock();
     var started = Date.now();

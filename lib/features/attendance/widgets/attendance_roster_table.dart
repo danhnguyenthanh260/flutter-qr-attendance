@@ -73,8 +73,10 @@ class _AttendanceRosterTableState extends State<AttendanceRosterTable> {
                     : ListView.separated(
                         padding: EdgeInsets.zero,
                         itemCount: rows.length,
-                        separatorBuilder: (_, _) =>
-                            const Divider(height: 1, color: AppColors.borderSubtle),
+                        separatorBuilder: (_, _) => const Divider(
+                          height: 1,
+                          color: AppColors.borderSubtle,
+                        ),
                         itemBuilder: (context, index) =>
                             _buildRow(rows[index], index + 1),
                       ),
@@ -85,16 +87,20 @@ class _AttendanceRosterTableState extends State<AttendanceRosterTable> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.summary.hasLegacyRoster)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text(
+                    'Phiên cũ thiếu roster gốc. Chỉ lượt có mặt đã ghi là xác nhận; chưa thể kết luận vắng từ danh sách này.',
+                  ),
+                ),
               _buildHeader(rows.length),
               const Divider(height: 1, color: AppColors.border),
               Expanded(
                 child: isNarrow
                     ? SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        child: SizedBox(
-                          width: 480,
-                          child: tableContent,
-                        ),
+                        child: SizedBox(width: 480, child: tableContent),
                       )
                     : tableContent,
               ),

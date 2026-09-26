@@ -15,6 +15,22 @@ enum HistoryDetailStatus { none, loading, ok, rosterMissing, unavailable }
 class AttendanceHistoryProvider extends ChangeNotifier {
   static const int defaultRangeDays = 14;
 
+  final Listenable? catalogChanges;
+  final List<ClassModel> Function()? catalogSource;
+  void _syncCatalog() {
+    final next = catalogSource?.call();
+    if (next == null || identical(next, _classes) || _isDisposed) return;
+    final previous = _selectedClass?.id;
+    _classes = next;
+    _selectedClass =
+        next.where((c) => c.id == previous).firstOrNull ?? next.firstOrNull;
+    if (_isInitialized && previous != _selectedClass?.id) {
+      loadGroups();
+    } else {
+      _notify();
+    }
+  }
+
   final AttendanceRepository _service;
   final DateTime Function() _clock;
 
@@ -39,8 +55,11 @@ class AttendanceHistoryProvider extends ChangeNotifier {
 
   AttendanceHistoryProvider({
     required this._service,
+    this.catalogChanges,
+    this.catalogSource,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now {
+    catalogChanges?.addListener(_syncCatalog);
     final today = startOfDay(_clock());
     _toDate = today;
     _fromDate = today.subtract(const Duration(days: defaultRangeDays - 1));
@@ -67,6 +86,9 @@ class AttendanceHistoryProvider extends ChangeNotifier {
 
     try {
       _classes = await _service.getClasses();
+      if (catalogSource?.call().isNotEmpty ?? false) {
+        _classes = catalogSource!();
+      }
     } catch (error) {
       _isInitialized = false;
       _classes = const [];
@@ -113,6 +135,11 @@ class AttendanceHistoryProvider extends ChangeNotifier {
     _clearDetail();
     _notify();
 
+    if (_selectedClass == null) {
+      _status = HistoryDataStatus.noClasses;
+      _notify();
+      return;
+    }
     List<SessionDayGroup> groups;
     try {
       final sessions = await _service.listSessions(classId: _selectedClass?.id);
@@ -217,6 +244,7 @@ class AttendanceHistoryProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    catalogChanges?.removeListener(_syncCatalog);
     _isDisposed = true;
     super.dispose();
   }

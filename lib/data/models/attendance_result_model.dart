@@ -30,6 +30,8 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
 }
 
 class RosterEntry {
+  final String memberCode;
+  final bool isActive;
   final String rollNumber;
   final String id;
   final String classId;
@@ -39,6 +41,8 @@ class RosterEntry {
 
   const RosterEntry({
     this.rollNumber = '',
+    this.memberCode = '',
+    this.isActive = true,
     required this.id,
     required this.classId,
     required this.email,
@@ -52,6 +56,10 @@ class RosterEntry {
     final email = _blankToNull(json['email']) ?? '';
     return RosterEntry(
       rollNumber: _blankToNull(json['roll_number']) ?? '',
+      memberCode: _blankToNull(json['member_code']) ?? '',
+      isActive:
+          json['is_active'] == null ||
+          json['is_active'].toString().toLowerCase() == 'true',
       id: _blankToNull(json['id']) ?? email,
       classId: _blankToNull(json['class_id']) ?? '',
       email: email,
@@ -66,6 +74,8 @@ class RosterEntry {
     'id': id,
     'class_id': classId,
     'roll_number': rollNumber,
+    'member_code': memberCode,
+    'is_active': isActive,
     'email': email,
     'email_key': emailKey,
     'student_name': studentName,
@@ -202,6 +212,7 @@ class AttendanceAttempt {
 }
 
 class SessionResults {
+  final String rosterSnapshotKind;
   final AttendanceSession session;
   final List<RosterEntry> roster;
   final List<AttendanceRecord> attendance;
@@ -209,6 +220,7 @@ class SessionResults {
   final DateTime fetchedAt;
 
   const SessionResults({
+    this.rosterSnapshotKind = 'at_open',
     required this.session,
     required this.roster,
     required this.attendance,
@@ -228,6 +240,8 @@ class SessionResults {
     }
 
     return SessionResults(
+      rosterSnapshotKind:
+          json['roster_snapshot_kind'] as String? ?? 'legacy_live',
       session: AttendanceSession.fromJson(
         Map<String, dynamic>.from(rawSession),
       ),
@@ -245,6 +259,7 @@ class SessionResults {
   }
 
   Map<String, dynamic> toJson() => {
+    'roster_snapshot_kind': rosterSnapshotKind,
     'session': session.toJson(),
     'roster': roster.map((item) => item.toJson()).toList(),
     'attendance': attendance.map((item) => item.toJson()).toList(),
@@ -257,6 +272,7 @@ class SessionResults {
     }
 
     return SessionResults(
+      rosterSnapshotKind: newer.rosterSnapshotKind,
       session: newer.session,
       roster: newer.roster,
       attendance: _unionById(attendance, newer.attendance, (item) => item.id),

@@ -75,6 +75,7 @@ var AttendanceRepository = (function (Domain) {
     });
     var entry = this._findEntry(Domain.SHEETS.classes, function (r) { return r.class_id === classId; });
     if (entry && (entry.data.name !== name || entry.data.course_code !== course || entry.data.schedule_description !== term)) Domain.fail('import_conflict', 'Existing class differs.', null);
+    if (entry && Domain.asBoolean(entry.data.is_active) && students.length !== existing.length) Domain.fail('import_conflict', 'Lớp đã tồn tại. Dùng Nhập cập nhật trong Dữ liệu lớp để xem trước thay đổi.', null);
     var now = this._nowIso();
     if (this._gateway.ensureOptionalColumns) this._gateway.ensureOptionalColumns(Domain.SHEETS.roster, ['roll_number', 'member_code']);
     if (!entry) entry = this._gateway.append(Domain.SHEETS.classes, {class_id: classId, name: name, course_code: course, room: '', schedule_description: term, is_active: false, created_at: now, updated_at: now});
@@ -97,7 +98,12 @@ var AttendanceRepository = (function (Domain) {
     var sessions = this.listSessions({class_id: classId});
     var ids = {};
     sessions.forEach(function (s) { ids[s.id] = true; });
-    return {slots: this.listSlotsForClass(classId), roster: this.getRoster(classId, true),
+    var rosters = {}, sources = {};
+    this._records(Domain.SHEETS.sessions).filter(function (s) { return ids[s.session_id]; }).forEach(function (s) {
+      rosters[s.session_id] = this.getSessionRoster(s);
+      sources[s.session_id] = s.roster_snapshot_kind || 'legacy_live';
+    }, this);
+    return {slots: this.listSlotsForClass(classId), roster: this.getRoster(classId, true), session_rosters: rosters, roster_sources: sources,
       sessions: sessions, attendance: this._records(Domain.SHEETS.attendance)
         .filter(function (r) { return ids[r.session_id]; }).map(this._toAttendance)};
   };
@@ -193,6 +199,10 @@ var AttendanceRepository = (function (Domain) {
       request_id: requestId,
       updated_at: now,
     };
+    session.roster_snapshot = JSON.stringify(this.getRoster(classId, true));
+    if (session.roster_snapshot.length > 45000) Domain.fail('roster_too_large', 'Roster exceeds snapshot capacity.', null);
+    session.roster_snapshot_kind = 'at_open';
+    if (this._gateway.ensureOptionalColumns) this._gateway.ensureOptionalColumns(Domain.SHEETS.sessions, ['roster_snapshot', 'roster_snapshot_kind']);
     this._gateway.append(Domain.SHEETS.sessions, session);
     return this._toSession(session, classRecord);
   };
@@ -314,7 +324,8 @@ var AttendanceRepository = (function (Domain) {
     var session = this._toSession(sessionEntry.data);
     return {
       session: session,
-      roster: this.getRoster(session.class_id),
+      roster: this.getSessionRoster(sessionEntry.data),
+      roster_snapshot_kind: sessionEntry.data.roster_snapshot_kind || 'legacy_live',
       attendance: this._records(Domain.SHEETS.attendance)
         .filter(function (record) { return record.session_id === sessionId; })
         .map(this._toAttendance),
@@ -450,6 +461,75 @@ var AttendanceRepository = (function (Domain) {
       return record.grant_id === 'FORM_' + ticket.ticket_id && record.session_id === sessionId;
     })) return null;
     return this._toTicket(ticket);
+  };
+
+  Repository.prototype.getSessionRoster = function (session) {
+    if (session.roster_snapshot) {
+      try { var rows = JSON.parse(session.roster_snapshot); if (Array.isArray(rows)) return rows; } catch (_) {}
+      Domain.fail('invalid_snapshot', 'Stored session roster cannot be read.', null);
+    }
+    return this.getRoster(session.class_id, true);
+  };
+
+  Repository.prototype.getClassRoster = function (classId) {
+    this._requireClass(classId);
+    var rows = this._records(Domain.SHEETS.roster).filter(function (r) { return r.class_id === classId; });
+    var students = rows.map(function (r) { return {id:r.roster_id, class_id:r.class_id, roll_number:r.roll_number || '',
+      member_code:r.member_code || '', email:r.email, email_key:r.email_key, student_name:r.student_name, is_active:Domain.asBoolean(r.is_active)}; });
+    return {students:students, revision:JSON.stringify(students), legacy_sessions:this._records(Domain.SHEETS.sessions).filter(function (s) {
+      return s.class_id === classId && !s.roster_snapshot;
+    }).length};
+  };
+
+  Repository.prototype.updateRoster = function (input) {
+    var classId = Domain.requireString(input.class_id, 'class_id');
+    var current = this.getClassRoster(classId);
+    if (input.revision !== current.revision) Domain.fail('roster_conflict', 'Danh sách đã thay đổi. Tải lại và xem trước thay đổi.', null);
+    var sessions = this._gateway.read(Domain.SHEETS.sessions).filter(function (r) { return r.data.class_id === classId; });
+    if (sessions.some(function (r) { return r.data.status !== 'closed'; })) Domain.fail('roster_session_open', 'Đóng phiên điểm danh của lớp và chờ chốt xong trước khi sửa danh sách.', null);
+    if (current.legacy_sessions && input.accept_legacy_snapshot !== true) Domain.fail('legacy_snapshot_required', 'Các phiên cũ chưa lưu roster gốc. Cần xác nhận lưu danh sách hiện tại làm mốc, không coi là roster gốc.', null);
+    if (!Array.isArray(input.students) || !input.students.length || input.students.length > 300) Domain.fail('invalid_roster', 'Cần 1–300 thay đổi.', null);
+    var all = this._gateway.read(Domain.SHEETS.roster), seen = {}, now = this._nowIso();
+    var nextRow = all.reduce(function (n,r) { return Math.max(n,r.rowNumber); },1) + 1;
+    var changes = input.students.map(function (s) {
+      var roll = Domain.requireString(s.roll_number,'roll_number').toUpperCase();
+      var email = Domain.normalizeEmail(s.email), name = Domain.requireString(s.student_name,'student_name'), member = Domain.optionalString(s.member_code);
+      if (!/^[A-Z0-9-]{2,32}$/.test(roll) || [email,name,member].some(function (v) { return /^[=+@-]/.test(v); }) || typeof s.is_active !== 'boolean') Domain.fail('invalid_roster','MSSV, email, tên hoặc trạng thái không hợp lệ.',null);
+      var existing = all.find(function (r) { return r.data.class_id === classId && r.data.roster_id === s.id; });
+      if (s.id && !existing) Domain.fail('roster_conflict','Không tìm thấy sinh viên cần sửa.',null);
+      var id = existing ? existing.data.roster_id : classId + '_' + roll;
+      if (!existing && all.some(function (r) { return r.data.roster_id === id; })) Domain.fail('roster_conflict','MSSV đã tồn tại; tải lại để sửa đúng sinh viên.',null);
+      if (name.length > 200 || member.length > 100 || email.length > 254) Domain.fail('invalid_roster','Thông tin sinh viên quá dài.',null);
+      if (seen[id]) Domain.fail('invalid_roster','Trùng sinh viên trong thay đổi.',null);
+      seen[id] = true;
+      return {rowNumber:existing ? existing.rowNumber : nextRow++, data:{roster_id:id,class_id:classId,roll_number:roll,
+        email:email,email_key:email,student_name:name,member_code:member,is_active:s.is_active,
+        created_at:existing ? existing.data.created_at : now,updated_at:now}};
+    });
+    var merged = all.filter(function (r) { return r.data.class_id === classId && !seen[r.data.roster_id]; }).map(function (r) { return r.data; }).concat(changes.map(function (r) { return r.data; }));
+    var rolls = {}, emails = {};
+    merged.forEach(function (r) {
+      var roll = String(r.roll_number || '').toUpperCase();
+      if (roll && rolls[roll]) Domain.fail('duplicate_roll','MSSV đã tồn tại trong lớp.',null);
+      if (roll) rolls[roll] = true;
+      if (emails[r.email_key]) Domain.fail('duplicate_email','Email đã tồn tại trong lớp, kể cả sinh viên ngừng học.',null);
+      emails[r.email_key] = true;
+    });
+    var projected = merged.filter(function (r) { return Domain.asBoolean(r.is_active); }).map(function (r) { return {id:r.roster_id,class_id:r.class_id,email:r.email,email_key:r.email_key,student_name:r.student_name,roll_number:r.roll_number || '',member_code:r.member_code || ''}; });
+    if (JSON.stringify(projected).length > 45000) Domain.fail('roster_too_large','Danh sách mới vượt giới hạn lưu lịch sử phiên.',null);
+    var snapshot = JSON.stringify(this.getRoster(classId,true));
+    if (snapshot.length > 45000) Domain.fail('roster_too_large','Roster vượt giới hạn lưu lịch sử.',null);
+    if (this._gateway.ensureOptionalColumns) {
+      this._gateway.ensureOptionalColumns(Domain.SHEETS.sessions,['roster_snapshot','roster_snapshot_kind']);
+      this._gateway.ensureOptionalColumns(Domain.SHEETS.roster,['roll_number','member_code']);
+    }
+    // Persist legacy baseline before changing membership. A failed roster write
+    // leaves a safe baseline; it never leaves history reading changed live rows.
+    sessions.filter(function (r) { return !r.data.roster_snapshot; }).forEach(function (r) {
+      this._gateway.update(Domain.SHEETS.sessions,r.rowNumber,{roster_snapshot:snapshot,roster_snapshot_kind:'legacy_baseline'});
+    },this);
+    this._gateway.writeRecords(Domain.SHEETS.roster,changes);
+    return this.getClassRoster(classId);
   };
 
   Repository.prototype.issueQrTicket = function (input) {
@@ -634,10 +714,8 @@ var AttendanceRepository = (function (Domain) {
     if (session.status !== 'active' && session.status !== 'closing' && !delayedDirect) {
       return this._rejectGrantSubmission(grantEntry, formResponseId, email, 'session_closed', 'session_not_accepting_submissions', 'used');
     }
-    var rosterRecord = this._records(Domain.SHEETS.roster).find(function (record) {
-      return record.class_id === session.class_id &&
-        record.email_key === email &&
-        Domain.asBoolean(record.is_active);
+    var rosterRecord = this.getSessionRoster(session).find(function (record) {
+      return record.email_key === email;
     });
     if (!rosterRecord) {
       return this._rejectGrantSubmission(grantEntry, formResponseId, email, 'roster_mismatch', 'email_not_in_roster', 'used');

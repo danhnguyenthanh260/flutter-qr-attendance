@@ -33,14 +33,18 @@ void main() async {
           create: (_) => AttendanceResultsProvider(
             service: attendanceService,
             preferredSession: () => sessionProvider.activeSession,
+            catalogChanges: sessionProvider,
+            catalogSource: () => sessionProvider.classes,
           ),
         ),
         ChangeNotifierProvider(
-          create: (_) => AttendanceHistoryProvider(service: attendanceService),
+          create: (_) => AttendanceHistoryProvider(
+            service: attendanceService,
+            catalogChanges: sessionProvider,
+            catalogSource: () => sessionProvider.classes,
+          ),
         ),
-        ChangeNotifierProvider(
-          create: (_) => AiAssistantProvider(),
-        ),
+        ChangeNotifierProvider(create: (_) => AiAssistantProvider()),
       ],
       child: const QrAttendanceApp(),
     ),

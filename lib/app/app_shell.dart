@@ -5,7 +5,7 @@ import '../core/constants/app_colors.dart';
 import '../core/utils/performance_log.dart';
 import '../features/ai_assistant/ai_assistant_view.dart';
 import '../features/attendance/attendance_view.dart';
-import '../features/roster_import/roster_preview_view.dart';
+import '../features/roster_import/class_data_view.dart';
 import '../features/teaching/session_selection_view.dart';
 import 'widgets/workspace_navigation.dart';
 
@@ -21,7 +21,7 @@ class _AppShellState extends State<AppShell> {
   static const _titles = [
     'Quản lý buổi học',
     'Theo dõi điểm danh',
-    'Danh sách lớp từ file',
+    'Quản lý danh sách lớp',
     'Trợ lý AI Điểm danh',
   ];
 
@@ -87,7 +87,7 @@ class _AppShellState extends State<AppShell> {
                             ? AttendanceView(active: _selectedIndex == 1)
                             : const SizedBox.shrink(),
                         _visited.contains(2)
-                            ? const RosterPreviewView()
+                            ? const ClassDataView()
                             : const SizedBox.shrink(),
                         _visited.contains(3)
                             ? const AiAssistantView()

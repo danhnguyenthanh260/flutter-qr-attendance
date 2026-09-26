@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 import '../../core/storage/session_storage.dart';
 import '../../core/utils/performance_log.dart';
 import '../../data/models/class_model.dart';
+import '../../data/models/class_roster.dart';
 import '../../data/models/qr_ticket_model.dart';
 import '../../data/models/session_model.dart';
 import '../../data/models/teaching_overview.dart';
 import '../../data/repositories/attendance_repository.dart';
+import '../../data/repositories/roster_repository.dart';
 import '../../data/repositories/teaching_repository.dart';
 import '../qr/qr_controller.dart';
 import 'attendance_date_policy.dart';
@@ -30,6 +32,28 @@ class SessionProvider extends ChangeNotifier {
     );
   }
   late final QrController qr;
+
+  Map<String, TeachingOverview>? workspaceOverview;
+  int workspaceRevision = 0;
+  Future<ClassRoster> getClassRoster(String id) async {
+    final service = _service;
+    if (service is! RosterRepository) {
+      throw StateError('Backend chưa hỗ trợ quản lý roster.');
+    }
+    return (service as RosterRepository).getClassRoster(id);
+  }
+
+  Future<ClassRoster> updateRoster(Map<String, dynamic> payload) async {
+    final service = _service;
+    if (service is! RosterRepository) {
+      throw StateError('Backend chưa hỗ trợ quản lý roster.');
+    }
+    final result = await (service as RosterRepository).updateRoster(payload);
+    // Saving succeeded independently of the following workspace refresh.
+    workspaceRevision++;
+    notifyListeners();
+    return result;
+  }
 
   List<ClassModel> _classes = [];
   ClassModel? _selectedClass;
@@ -80,7 +104,16 @@ class SessionProvider extends ChangeNotifier {
     if (_activeSession?.id != workspace.activeSession?.id) {
       stopQrRotation();
     }
+    workspaceOverview = workspace.overview;
+    workspaceRevision++;
     _classes = workspace.classes;
+    final selectedId = _selectedClass?.id;
+    _selectedClass = _classes.where((c) => c.id == selectedId).firstOrNull;
+    if (selectedId != null && _selectedClass == null) {
+      _slotRequest++;
+      _selectedSlot = null;
+      _slots = [];
+    }
     _activeSession = workspace.activeSession;
     _sessionVerified = true;
     _errorMessage = null;

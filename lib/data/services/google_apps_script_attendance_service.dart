@@ -9,10 +9,12 @@ import '../../core/storage/catalog_storage.dart';
 import '../../core/utils/performance_log.dart';
 import '../models/attendance_result_model.dart';
 import '../models/class_model.dart';
+import '../models/class_roster.dart';
 import '../models/qr_ticket_model.dart';
 import '../models/session_model.dart';
 import '../models/teaching_overview.dart';
 import '../repositories/catalog_repository.dart';
+import '../repositories/roster_repository.dart';
 import '../repositories/teaching_repository.dart';
 import 'attendance_api_exception.dart';
 import 'attendance_service.dart';
@@ -90,9 +92,46 @@ AttendanceService createConfiguredTeacherAttendanceService() {
 class GoogleAppsScriptAttendanceService
     implements
         AttendanceService,
+        RosterRepository,
         TeachingRepository,
         TeachingWorkspaceRepository,
         ScheduleSnapshotSource {
+  @override
+  Future<ClassRoster> getClassRoster(String classId) async =>
+      ClassRoster.fromJson(
+        _asMap(
+          await _get('class_roster', query: {'class_id': classId}),
+          'class_roster',
+        ),
+      );
+
+  @override
+  Future<ClassRoster> updateRoster(Map<String, dynamic> payload) async {
+    try {
+      return ClassRoster.fromJson(
+        _asMap(await _post('update_roster', payload), 'update_roster'),
+      );
+    } on TeacherApiException catch (error) {
+      if (error.code != 'operation_unconfirmed') rethrow;
+      // Never replay an uncertain write. Read back the desired rows instead.
+      final current = await getClassRoster(payload['class_id'] as String);
+      final confirmed = (payload['students'] as List).every(
+        (change) => current.students.any((s) {
+          final actual = s.toJson();
+          return [
+            'roll_number',
+            'email',
+            'student_name',
+            'member_code',
+            'is_active',
+          ].every((key) => actual[key] == change[key]);
+        }),
+      );
+      if (!confirmed) rethrow;
+      return current;
+    }
+  }
+
   Future<TeachingWorkspace>? _workspaceRead;
   @override
   Future<TeachingWorkspace> refreshWorkspace() => _workspaceRead ??=
@@ -120,6 +159,10 @@ class GoogleAppsScriptAttendanceService
         : AttendanceSession.fromJson(
             _asMap(data['active_session'], 'active_session'),
           );
+    _catalog.acceptWorkspace(
+      classes,
+      overview.map((id, data) => MapEntry(id, data.slots)),
+    );
     final snapshot = [
       for (final c in classes)
         {
