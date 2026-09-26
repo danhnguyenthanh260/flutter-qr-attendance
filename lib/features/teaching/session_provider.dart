@@ -11,6 +11,7 @@ import '../../data/models/teaching_overview.dart';
 import '../../data/repositories/attendance_repository.dart';
 import '../../data/repositories/teaching_repository.dart';
 import '../qr/qr_controller.dart';
+import 'attendance_date_policy.dart';
 
 class SessionProvider extends ChangeNotifier {
   final AttendanceRepository _service;
@@ -281,6 +282,7 @@ class SessionProvider extends ChangeNotifier {
 
   Future<void> startQrRotation() async {
     if (!hasActiveSession || _isClosingSession || _isDisposed) return;
+    if (isPastAttendanceDate(_activeSession!.slot.date)) return;
     await qr.start(_activeSession!.id);
   }
 
@@ -304,7 +306,7 @@ class SessionProvider extends ChangeNotifier {
       // Đợi xác nhận từ máy chủ API với timeout 5 giây
       await _service
           .closeSession(_activeSession!.id)
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 30));
 
       // Chỉ khi máy chủ xác nhận thành công mới xóa cache và đánh dấu closed
       await _storage.clearActiveSession();

@@ -127,6 +127,14 @@ var AttendanceRepository = (function (Domain) {
     return roster;
   };
 
+  // Attendance dates follow Vietnam calendar days, independent of host timezone.
+  Repository.prototype._requireAttendanceDate = function (date) {
+    var today = new Date(this._clock().getTime() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (date < today) {
+      Domain.fail('past_session_date', 'Không thể mở điểm danh cho ngày đã qua. Vẫn có thể xem kết quả và đóng phiên cũ.', {session_date: date, today: today});
+    }
+  };
+
   Repository.prototype.startSession = function (input) {
     input = input || {};
     var classId = Domain.requireString(input.class_id, 'class_id');
@@ -146,6 +154,8 @@ var AttendanceRepository = (function (Domain) {
         return this._toSession(requestMatch);
       }
     }
+
+    this._requireAttendanceDate(sessionDate);
 
     var activeSession = sessions.find(function (record) {
       return record.status === 'active' || record.status === 'closing';
@@ -434,6 +444,7 @@ var AttendanceRepository = (function (Domain) {
       });
     }
 
+    this._requireAttendanceDate(session.session_date);
     var validSeconds = Domain.asInteger(input.valid_seconds, 'valid_seconds');
     if (validSeconds <= 0) {
       Domain.fail('validation_error', 'valid_seconds must be greater than zero.', {

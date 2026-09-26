@@ -693,4 +693,20 @@ test('weekly overview includes all classes and empty rosters without creating se
   assert.equal(gateway.rows(Domain.SHEETS.sessions).length,0);
   assert.throws(()=>TeacherApiContract.execute('GET',{action:'weekly_overview',teacher_key:'wrong'},context),/authentication/);
 });
+test('Vietnam day boundary blocks past starts and QR but allows close and receipt replay', () => {
+  const {service, gateway, setNow} = createFixture();
+  setNow('2026-09-18T17:00:00Z');
+  const session = service.startSession(startInput()); // midnight Sep 19 VN
+  setNow('2026-09-19T17:00:00Z');
+  assert.throws(() => service.startSession(startInput({request_id: 'NEW'})), {code: 'past_session_date'});
+  assert.equal(gateway.rows(Domain.SHEETS.sessions).length, 1);
+  assert.equal(service.startSession(startInput()).id, session.id);
+  assert.throws(() => service.issueQrTicket({session_id: session.id, valid_seconds: 30}), {code: 'past_session_date'});
+  service.requestCloseSession(session.id);
+});
+test('future scheduled lesson can be opened before its calendar date', () => {
+  const {service, setNow} = createFixture();
+  setNow('2026-09-18T16:59:59Z');
+  assert.equal(service.startSession(startInput()).slot.date, '2026-09-19');
+});
 }

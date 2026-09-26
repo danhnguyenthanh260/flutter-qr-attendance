@@ -5,6 +5,7 @@ import '../../data/models/class_model.dart';
 import '../../data/models/session_model.dart';
 import '../../data/models/teaching_overview.dart';
 import '../qr/qr_display_view.dart';
+import 'attendance_date_policy.dart';
 import 'session_provider.dart';
 
 class LessonAttendanceView extends StatefulWidget {
@@ -37,19 +38,18 @@ class _LessonAttendanceViewState extends State<LessonAttendanceView> {
       session.slot.slotNumber == widget.slot.slotNumber;
   Future<void> _attend() async {
     final provider = context.read<SessionProvider>();
-    if (_starting) return;
+    if (_starting || isPastAttendanceDate(widget.slot.date)) return;
     if (provider.hasActiveSession) {
       if (_matches(provider.activeSession)) setState(() => _showQr = true);
       return;
     }
     setState(() => _starting = true);
     try {
-      if (widget.slot.date !=
-          DateTime.now().toIso8601String().substring(0, 10)) {
+      if (widget.slot.date != attendanceToday()) {
         final agreed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Buổi học khác ngày hôm nay'),
+            title: const Text('Điểm danh trước ngày học'),
             content: Text(
               '${widget.classModel.name} · ${widget.classModel.courseCode}\nNgày ${widget.slot.date} · Ca ${widget.slot.slotNumber}\nKết quả sẽ được ghi cho đúng buổi này.',
             ),
@@ -121,7 +121,8 @@ class _LessonAttendanceViewState extends State<LessonAttendanceView> {
           children: [
             FilledButton.icon(
               onPressed:
-                  _starting ||
+                  isPastAttendanceDate(widget.slot.date) ||
+                      _starting ||
                       provider.isStartingSession ||
                       otherActive ||
                       !provider.canStartSession ||
@@ -150,6 +151,41 @@ class _LessonAttendanceViewState extends State<LessonAttendanceView> {
             ),
           ],
         ),
+        if (isPastAttendanceDate(widget.slot.date))
+          const Text(
+            'Buổi học đã qua: chỉ xem kết quả, không mở điểm danh mới.',
+          ),
+        if (provider.hasActiveSession)
+          TextButton(
+            onPressed: provider.isClosingSession
+                ? null
+                : () async {
+                    final active = provider.activeSession!;
+                    final agreed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Đóng phiên đang mở?'),
+                        content: Text(
+                          '${active.classId} · Ngày ${active.slot.date} · Ca ${active.slot.slotNumber}',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Quay lại'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Đóng phiên'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (agreed == true) await provider.closeSession();
+                  },
+            child: Text(
+              'Đóng phiên đang mở · ${provider.activeSession!.classId} · ${provider.activeSession!.slot.date} · Ca ${provider.activeSession!.slot.slotNumber}',
+            ),
+          ),
         if (otherActive)
           const Padding(
             padding: EdgeInsets.only(top: 12),
