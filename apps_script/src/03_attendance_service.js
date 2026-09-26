@@ -13,6 +13,25 @@ var AttendanceDataService = (function (Repository) {
     }.bind(this));
   };
 
+  Service.prototype.importRoster = function (input) {
+    return this._mutate(function () { return this._repository.importRoster(input); });
+  };
+
+  Service.prototype.getWorkspace = function () {
+    return this._settleAndRead(function () {
+      return {classes: this._repository.listClasses(), overview: this._repository.getWeeklyOverview(),
+        active_session: this._repository.getActiveSession()};
+    });
+  };
+
+  Service.prototype.getWeeklyOverview = function () {
+    return this._settleAndRead(function () { return this._repository.getWeeklyOverview(); });
+  };
+
+  Service.prototype.getTeachingOverview = function (classId) {
+    return this._settleAndRead(function () { return this._repository.getTeachingOverview(classId); });
+  };
+
   Service.prototype.listClasses = function () {
     return this._repository.listClasses();
   };
@@ -22,19 +41,20 @@ var AttendanceDataService = (function (Repository) {
   };
 
   Service.prototype.getActiveSession = function () {
-    return this._repository.getActiveSession();
+    return this._settleAndRead(function () { return this._repository.getActiveSession(); });
   };
 
   Service.prototype.listSessions = function (filters) {
-    return this._repository.listSessions(filters);
+    return this._settleAndRead(function () { return this._repository.listSessions(filters); });
   };
 
   Service.prototype.getSessionResults = function (sessionId) {
-    return this._repository.getSessionResults(sessionId);
+    return this._settleAndRead(function () { return this._repository.getSessionResults(sessionId); });
   };
 
   Service.prototype.startSession = function (input) {
     return this._mutate(function () {
+      this._repository.finalizeReadySessions();
       return this._repository.startSession(input);
     });
   };
@@ -75,6 +95,10 @@ var AttendanceDataService = (function (Repository) {
     });
   };
 
+  Service.prototype.getQrReceipt = function (sessionId, requestId) {
+    return this._mutate(function () { return this._repository.getQrReceipt(sessionId, requestId); });
+  };
+
   Service.prototype.issueQrTicket = function (input) {
     return this._mutate(function () {
       return this._repository.issueQrTicket(input);
@@ -95,6 +119,13 @@ var AttendanceDataService = (function (Repository) {
 
   Service.prototype._mutate = function (callback) {
     return this._gateway.withLock(callback.bind(this));
+  };
+
+  Service.prototype._settleAndRead = function (callback) {
+    return this._mutate(function () {
+      this._repository.finalizeReadySessions();
+      return callback.call(this);
+    });
   };
 
   return {

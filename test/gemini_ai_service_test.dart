@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'package:flutter_qr_attendance/data/models/attendance_summary.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/services/gemini_ai_service.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'helpers/attendance_fixtures.dart';
 

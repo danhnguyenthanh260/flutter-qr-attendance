@@ -16,6 +16,16 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'GET') {
       switch (action) {
+        case 'qr_receipt':
+          return Domain.success(StudentService.getQrReceipt(service, context.studentConfig,
+            Domain.requireString(payload.session_id, 'session_id'),
+            Domain.requireString(payload.request_id, 'request_id'), context.formGateway));
+        case 'workspace':
+          return Domain.success(service.getWorkspace());
+        case 'weekly_overview':
+          return Domain.success(service.getWeeklyOverview());
+        case 'class_overview':
+          return Domain.success(service.getTeachingOverview(Domain.requireString(payload.class_id, 'class_id')));
         case 'classes':
           return Domain.success(service.listClasses());
         case 'slots':
@@ -36,6 +46,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'POST') {
       switch (action) {
+        case 'import_roster':
+          return Domain.success(service.importRoster(payload));
         case 'start_session':
           return Domain.success(service.startSession({
             class_id: payload.class_id,
@@ -49,7 +61,9 @@ var TeacherApiContract = (function (Domain, StudentService) {
           return Domain.success(StudentService.issueQrTicket(
             service,
             context.studentConfig,
-            Domain.requireString(payload.session_id, 'session_id')
+            Domain.requireString(payload.session_id, 'session_id'),
+            payload.request_id,
+            context.formGateway
           ));
         default:
           Domain.fail('unknown_action', 'Unsupported POST action.', { action: action });
@@ -87,15 +101,20 @@ function createTeacherApiResponseFromEvent_(method, event) {
 
 function createTeacherApiResponse_(method, payload) {
   var envelope;
+  var started = Date.now();
   try {
     var context = AttendanceConfig.createLiveContext();
-    if (payload.action === 'issue_qr') {
+    if (payload.action === 'issue_qr' || payload.action === 'qr_receipt') {
       context.studentConfig = AttendanceConfig.getStudentFlowConfig();
+      context.formGateway = AttendanceFormGateway;
     }
     envelope = TeacherApiContract.execute(method, payload, context);
   } catch (error) {
     envelope = AttendanceDomain.errorEnvelope(error);
   }
+  console.info(JSON.stringify({event: 'teacher_api_complete', action: String(payload.action).slice(0, 40),
+    ms: Date.now() - started, ok: envelope.ok, code: envelope.error ? envelope.error.code : null,
+    trace_id: /^[0-9-]{1,64}$/.test(String(payload._trace_id || '')) ? payload._trace_id : null}));
   return createTeacherApiOutput_(envelope);
 }
 

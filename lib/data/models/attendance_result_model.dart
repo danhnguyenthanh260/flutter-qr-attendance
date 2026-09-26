@@ -24,12 +24,13 @@ String _displayNameFor(String? studentName, String email) {
 List<Map<String, dynamic>> _mapList(dynamic value) {
   if (value is! List) return const [];
   return value
-      .whereType<Map>()
+      .whereType<Map<Object?, Object?>>()
       .map((item) => Map<String, dynamic>.from(item))
       .toList(growable: false);
 }
 
 class RosterEntry {
+  final String rollNumber;
   final String id;
   final String classId;
   final String email;
@@ -37,6 +38,7 @@ class RosterEntry {
   final String? studentName;
 
   const RosterEntry({
+    this.rollNumber = '',
     required this.id,
     required this.classId,
     required this.email,
@@ -49,27 +51,32 @@ class RosterEntry {
   factory RosterEntry.fromJson(Map<String, dynamic> json) {
     final email = _blankToNull(json['email']) ?? '';
     return RosterEntry(
+      rollNumber: _blankToNull(json['roll_number']) ?? '',
       id: _blankToNull(json['id']) ?? email,
       classId: _blankToNull(json['class_id']) ?? '',
       email: email,
       emailKey:
-          _blankToNull(json['email_key'])?.toLowerCase() ?? normalizeEmailKey(email),
+          _blankToNull(json['email_key'])?.toLowerCase() ??
+          normalizeEmailKey(email),
       studentName: _blankToNull(json['student_name']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'class_id': classId,
-        'email': email,
-        'email_key': emailKey,
-        'student_name': studentName,
-      };
+    'id': id,
+    'class_id': classId,
+    'roll_number': rollNumber,
+    'email': email,
+    'email_key': emailKey,
+    'student_name': studentName,
+  };
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is RosterEntry && runtimeType == other.runtimeType && id == other.id;
+      other is RosterEntry &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
 
   @override
   int get hashCode => id.hashCode;
@@ -104,21 +111,22 @@ class AttendanceRecord {
       formResponseId: _blankToNull(json['form_response_id']),
       email: email,
       emailKey:
-          _blankToNull(json['email_key'])?.toLowerCase() ?? normalizeEmailKey(email),
+          _blankToNull(json['email_key'])?.toLowerCase() ??
+          normalizeEmailKey(email),
       studentName: _blankToNull(json['student_name']),
       acceptedAt: _parseTimestamp(json['accepted_at']),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'session_id': sessionId,
-        'form_response_id': formResponseId,
-        'email': email,
-        'email_key': emailKey,
-        'student_name': studentName,
-        'accepted_at': acceptedAt?.toIso8601String(),
-      };
+    'id': id,
+    'session_id': sessionId,
+    'form_response_id': formResponseId,
+    'email': email,
+    'email_key': emailKey,
+    'student_name': studentName,
+    'accepted_at': acceptedAt?.toIso8601String(),
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -163,7 +171,8 @@ class AttendanceAttempt {
       formResponseId: _blankToNull(json['form_response_id']),
       email: email,
       emailKey:
-          _blankToNull(json['email_key'])?.toLowerCase() ?? normalizeEmailKey(email),
+          _blankToNull(json['email_key'])?.toLowerCase() ??
+          normalizeEmailKey(email),
       attemptType: _blankToNull(json['attempt_type']) ?? 'unknown',
       reason: _blankToNull(json['reason']),
       occurredAt: _parseTimestamp(json['occurred_at']),
@@ -171,15 +180,15 @@ class AttendanceAttempt {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'session_id': sessionId,
-        'form_response_id': formResponseId,
-        'email': email,
-        'email_key': emailKey,
-        'attempt_type': attemptType,
-        'reason': reason,
-        'occurred_at': occurredAt?.toIso8601String(),
-      };
+    'id': id,
+    'session_id': sessionId,
+    'form_response_id': formResponseId,
+    'email': email,
+    'email_key': emailKey,
+    'attempt_type': attemptType,
+    'reason': reason,
+    'occurred_at': occurredAt?.toIso8601String(),
+  };
 
   @override
   bool operator ==(Object other) =>
@@ -219,7 +228,9 @@ class SessionResults {
     }
 
     return SessionResults(
-      session: AttendanceSession.fromJson(Map<String, dynamic>.from(rawSession)),
+      session: AttendanceSession.fromJson(
+        Map<String, dynamic>.from(rawSession),
+      ),
       roster: _mapList(json['roster'])
           .map(RosterEntry.fromJson)
           .toList(growable: false),
@@ -234,11 +245,11 @@ class SessionResults {
   }
 
   Map<String, dynamic> toJson() => {
-        'session': session.toJson(),
-        'roster': roster.map((item) => item.toJson()).toList(),
-        'attendance': attendance.map((item) => item.toJson()).toList(),
-        'attempts': attempts.map((item) => item.toJson()).toList(),
-      };
+    'session': session.toJson(),
+    'roster': roster.map((item) => item.toJson()).toList(),
+    'attendance': attendance.map((item) => item.toJson()).toList(),
+    'attempts': attempts.map((item) => item.toJson()).toList(),
+  };
 
   SessionResults mergeWith(SessionResults newer) {
     if (newer.session.id != session.id) {

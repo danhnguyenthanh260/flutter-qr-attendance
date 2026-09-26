@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_qr_attendance/data/models/attendance_result_model.dart';
 import 'package:flutter_qr_attendance/data/models/class_model.dart';
 import 'package:flutter_qr_attendance/data/models/student_absence_warning.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('StudentAbsenceRecord Tests', () {

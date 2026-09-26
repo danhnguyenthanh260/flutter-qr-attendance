@@ -1,0 +1,19 @@
+# Windows 1.4.4 / teacher API v22
+
+## Changes and evidence
+
+- Calendar startup now reads authenticated `workspace` once: active classes, their weekly overview, and active session are resolved under one lock. Refresh replaces the class catalog as well as lesson data. A paired, endpoint/account-scoped schedule snapshot replaces the old independently cached classes/slots. Snapshot-only cells say the roster is unavailable instead of displaying a false 0/0.
+- Native Windows 1.4.3 verification displayed only the imported SE1919 / PRN232 class, two test lessons, and 37 students. Startup took 9.415 seconds in this one observation. The user opened today's lesson while automation was observing, so input automation paused.
+- That real native start-session POST returned 302 after 4.588 seconds, then its Google content GET returned 404 HTML after 28.069 seconds. The app's 25-second deadline correctly reported operation_unconfirmed. A subsequent authenticated active-session read confirmed a session exists. This is response delivery failure, not proof of lost Wi-Fi or failed server mutation.
+- 1.4.4 reconciles uncertain starts with a bounded active-session read, accepting only the same active class/date/slot. Uncertain QR issuance reads the exact request receipt through authenticated `qr_receipt`; it neither issues another ticket nor extends expiry. Missing receipts remain uncertain, and expired tickets remain unusable. POST content delivery waits at most ten seconds before reconciliation; the overall POST deadline remains 25 seconds. Already-sent requests can still complete later.
+- ContentService 404/410 responses are typed as content_unavailable and may trigger one read retry. Writes are never automatically replayed by transport recovery.
+- Release diagnostics are written synchronously to per-process `diagnostics-<pid>.jsonl`, rotated at approximately 1 MiB with one backup per process. Native startup and HTTP events were verified in PID 22352 for build 1.4.3. Logs exclude credentials, response bodies, roster data, and QR tokens. Per-process rotation does not impose a global retention limit across launches.
+- 139 Flutter tests and 35 backend tests passed; analyzer and architecture checks passed. Regressions cover hidden-class refresh, schedule snapshot scope, content 404 read recovery, matching versus unrelated active-session reconciliation, exact QR receipt recovery, unchanged ticket lifetime, and no POST replay.
+- Teacher deployment advanced from v20 through v21 to v22 after verifying remote HEAD at each transition. Existing teacher URL/access preserved; legacy student v10 deployment unchanged.
+
+## Native acceptance and limits
+
+- Native 1.4.4 PID 28588 loaded workspace JSON in 4.147 seconds after startup, restored the existing SE1919 September 26 slot 3 session, displayed 0/37, and exposed View QR. User interaction took over navigation; the agent observed rather than competing for input.
+- QR issuance returned HTTP 200 JSON after approximately 5.76 seconds and the native window displayed a scannable QR with countdown (generation 1). This confirms native session recovery and QR display; the receipt fallback itself is covered by automated lost-response tests, not a claim of forced live failure reproduction on 1.4.4.
+- Canonical Desktop QR Attendance shortcut targets `build/trial-1.4.4/flutter_qr_attendance.exe`. Dart AOT `data/app.so` SHA256: `DEE3C2592291768E86193DAE7774A2158EA46C2BE332E7854F6CB3C0707DCE99`.
+- No student Form submission was performed by the agent. Form acceptance with the enrolled test account remains a separate verification step. No claim is made that Google's underlying intermittent ContentService delivery problem is eliminated, or that scripts.run/OAuth has been implemented. One startup measurement is not a latency guarantee.

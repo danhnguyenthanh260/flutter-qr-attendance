@@ -1,5 +1,5 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_qr_attendance/data/services/gemini_key_rotator.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('GeminiKeyRotator Tests', () {

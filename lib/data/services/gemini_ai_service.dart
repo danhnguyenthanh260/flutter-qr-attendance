@@ -309,7 +309,7 @@ class LocalAttendanceAiService implements AttendanceAiService {
     String? apiKey,
     List<String>? apiKeys,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     final lowerPrompt = prompt.toLowerCase();
 
     // 1. Phân tích Cảnh báo vắng gần 20% & Cấm thi (Quy chế FPT University)
@@ -466,7 +466,7 @@ class LocalAttendanceAiService implements AttendanceAiService {
     String? apiKey,
     List<String>? apiKeys,
   }) async {
-    await Future.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
     final scope = summary.scope;
     final rate = summary.totalStudents > 0
         ? ((summary.presentCount / summary.totalStudents) * 100).toStringAsFixed(1)

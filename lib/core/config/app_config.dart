@@ -15,23 +15,20 @@ class AppConfig {
   /// `--dart-define` after the Apps Script Web App is configured.
   static const String teacherApiUrl = String.fromEnvironment(
     'ATTENDANCE_TEACHER_API_URL',
-    defaultValue:
-        'https://script.google.com/macros/s/AKfycbxGzNHyaXatKZylXpE7ObHSnqwTJ_gT3-1adJkqsSrpQYYWYQ34PXLAYynavU9HJ0oo9w/exec',
   );
   static const String teacherApiKey = String.fromEnvironment(
     'ATTENDANCE_TEACHER_API_KEY',
-    defaultValue: 'YHWB2BXZD92TYZecEClAIcd-BfBZdM2O8r3BxFZsekg',
   );
   static const String teacherId = String.fromEnvironment(
     'ATTENDANCE_TEACHER_ID',
-    defaultValue: 'teacher-test',
   );
 
   /// Opt-in switch for the seeded in-memory dataset. It is never enabled by
   /// default, so a release without teacher API configuration still fails closed
   /// instead of showing demo numbers as if they were real attendance.
-  static const bool useSeededMockData =
-      bool.fromEnvironment('ATTENDANCE_USE_MOCK');
+  static const bool useSeededMockData = bool.fromEnvironment(
+    'ATTENDANCE_USE_MOCK',
+  );
 
   static bool get hasTeacherApiConfiguration =>
       teacherApiUrl.isNotEmpty &&

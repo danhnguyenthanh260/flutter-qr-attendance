@@ -5,6 +5,7 @@ class QrTicketModel {
   final int validSeconds;
   final DateTime createdAt;
   final DateTime expiresAt;
+  final DateTime? localExpiresAt;
 
   const QrTicketModel({
     required this.ticketCode,
@@ -13,23 +14,37 @@ class QrTicketModel {
     required this.validSeconds,
     required this.createdAt,
     required this.expiresAt,
+    this.localExpiresAt,
   });
 
-  bool get isExpired => DateTime.now().isAfter(expiresAt);
+  bool get isExpired => remainingSeconds == 0;
 
   int get remainingSeconds {
-    final diff = expiresAt.difference(DateTime.now()).inSeconds;
-    return diff > 0 ? diff : 0;
+    final diff = (localExpiresAt ?? expiresAt)
+        .difference(DateTime.now())
+        .inSeconds;
+    return diff.clamp(0, validSeconds);
   }
 
-  factory QrTicketModel.fromJson(Map<String, dynamic> json) {
+  factory QrTicketModel.fromJson(
+    Map<String, dynamic> json, {
+    Duration transit = Duration.zero,
+  }) {
+    final expiresAt = DateTime.parse(json['expires_at'] as String);
+    final serverTime = DateTime.tryParse(json['server_time'] as String? ?? '');
+    // Subtract the full round trip conservatively; local clock skew must not
+    // make a server-expired ticket appear valid.
+    final localExpiry = serverTime == null
+        ? null
+        : DateTime.now().add(expiresAt.difference(serverTime) - transit);
     return QrTicketModel(
       ticketCode: json['ticket_code'] as String,
       formUrl: json['form_url'] as String,
       generation: json['generation'] as int,
       validSeconds: json['valid_seconds'] as int? ?? 30,
       createdAt: DateTime.parse(json['created_at'] as String),
-      expiresAt: DateTime.parse(json['expires_at'] as String),
+      expiresAt: expiresAt,
+      localExpiresAt: localExpiry,
     );
   }
 

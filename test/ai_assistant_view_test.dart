@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
+import 'package:flutter_qr_attendance/data/services/gemini_ai_service.dart';
+import 'package:flutter_qr_attendance/features/ai_assistant/ai_assistant_provider.dart';
+import 'package:flutter_qr_attendance/features/ai_assistant/ai_assistant_view.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_history_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_results_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
-
-import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
-import 'package:flutter_qr_attendance/data/services/gemini_ai_service.dart';
-import 'package:flutter_qr_attendance/providers/ai_assistant_provider.dart';
-import 'package:flutter_qr_attendance/providers/attendance_history_provider.dart';
-import 'package:flutter_qr_attendance/providers/attendance_results_provider.dart';
-import 'package:flutter_qr_attendance/views/ai_assistant/ai_assistant_view.dart';
 
 void main() {
   setUpAll(() async {

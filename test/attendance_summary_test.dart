@@ -1,7 +1,6 @@
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:flutter_qr_attendance/data/models/attendance_summary.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'helpers/attendance_fixtures.dart';
 
@@ -194,8 +193,10 @@ void main() {
         ),
       );
 
-      expect(summary.retryEvents.map((event) => event.id).toList(),
-          ['ATM_MOI', 'ATM_CU']);
+      expect(summary.retryEvents.map((event) => event.id).toList(), [
+        'ATM_MOI',
+        'ATM_CU',
+      ]);
     });
   });
 
@@ -306,7 +307,10 @@ void main() {
         buildResults(session: firstSession, roster: roster),
         buildResults(
           session: secondSession,
-          roster: [...roster, buildRosterEntry('moi@fpt.edu.vn', name: 'Đỗ Gia Mới')],
+          roster: [
+            ...roster,
+            buildRosterEntry('moi@fpt.edu.vn', name: 'Đỗ Gia Mới'),
+          ],
         ),
       ]);
 
@@ -319,12 +323,16 @@ void main() {
         buildResults(
           session: firstSession,
           roster: roster,
-          attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_A', sessionId: 'SES_A')],
+          attempts: [
+            buildAttempt('an@fpt.edu.vn', id: 'ATM_A', sessionId: 'SES_A'),
+          ],
         ),
         buildResults(
           session: secondSession,
           roster: roster,
-          attempts: [buildAttempt('an@fpt.edu.vn', id: 'ATM_B', sessionId: 'SES_B')],
+          attempts: [
+            buildAttempt('an@fpt.edu.vn', id: 'ATM_B', sessionId: 'SES_B'),
+          ],
         ),
       ]);
 
@@ -378,7 +386,11 @@ void main() {
         session: buildSession(id: 'SES_KHAC'),
         roster: roster,
         attendance: [
-          buildAttendance('binh@fpt.edu.vn', id: 'ATT_9', sessionId: 'SES_KHAC'),
+          buildAttendance(
+            'binh@fpt.edu.vn',
+            id: 'ATT_9',
+            sessionId: 'SES_KHAC',
+          ),
         ],
       );
 

@@ -135,8 +135,8 @@ class FakeAttendanceService implements AttendanceService {
   FakeAttendanceService({
     List<ClassModel>? classes,
     List<AttendanceSession>? sessions,
-  })  : classes = classes ?? [buildClass()],
-        sessions = sessions ?? [];
+  }) : classes = classes ?? [buildClass()],
+       sessions = sessions ?? [];
 
   void setResults(SessionResults results) {
     resultsBySession[results.session.id] = results;

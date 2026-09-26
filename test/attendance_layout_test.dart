@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_qr_attendance/data/models/session_model.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_history_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/attendance_results_provider.dart';
+import 'package:flutter_qr_attendance/features/attendance/history_attendance_view.dart';
+import 'package:flutter_qr_attendance/features/attendance/today_attendance_view.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
-
-import 'package:flutter_qr_attendance/data/models/session_model.dart';
-import 'package:flutter_qr_attendance/providers/attendance_history_provider.dart';
-import 'package:flutter_qr_attendance/providers/attendance_results_provider.dart';
-import 'package:flutter_qr_attendance/views/attendance/history_attendance_view.dart';
-import 'package:flutter_qr_attendance/views/attendance/today_attendance_view.dart';
 
 import 'helpers/attendance_fixtures.dart';
 
@@ -33,31 +32,30 @@ void main() {
   ];
 
   FakeAttendanceService buildService(AttendanceSession session) {
-    return FakeAttendanceService(sessions: [session])
-      ..setResults(
-        buildResults(
-          session: session,
-          roster: roster,
-          attendance: [
-            buildAttendance(
-              'an@fpt.edu.vn',
-              id: 'ATT_1',
-              sessionId: session.id,
-              name: 'Nguyễn Văn An',
-            ),
-          ],
-          attempts: [
-            buildAttempt('an@fpt.edu.vn', id: 'ATM_1', sessionId: session.id),
-            buildAttempt(
-              'khachlaruatdai@gmail.com',
-              id: 'ATM_2',
-              sessionId: session.id,
-              attemptType: 'roster_mismatch',
-              reason: 'email_not_in_roster',
-            ),
-          ],
-        ),
-      );
+    return FakeAttendanceService(sessions: [session])..setResults(
+      buildResults(
+        session: session,
+        roster: roster,
+        attendance: [
+          buildAttendance(
+            'an@fpt.edu.vn',
+            id: 'ATT_1',
+            sessionId: session.id,
+            name: 'Nguyễn Văn An',
+          ),
+        ],
+        attempts: [
+          buildAttempt('an@fpt.edu.vn', id: 'ATM_1', sessionId: session.id),
+          buildAttempt(
+            'khachlaruatdai@gmail.com',
+            id: 'ATM_2',
+            sessionId: session.id,
+            attemptType: 'roster_mismatch',
+            reason: 'email_not_in_roster',
+          ),
+        ],
+      ),
+    );
   }
 
   void applySize(WidgetTester tester, Size size) {

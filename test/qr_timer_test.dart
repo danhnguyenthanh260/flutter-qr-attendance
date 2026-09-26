@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_qr_attendance/data/models/qr_ticket_model.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
-import 'package:flutter_qr_attendance/providers/session_provider.dart';
+import 'package:flutter_qr_attendance/features/teaching/session_provider.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('QrTicketModel Tests', () {
@@ -46,21 +46,30 @@ void main() {
       provider.dispose();
     });
 
-    test('Starting session automatically starts QR rotation and sets countdown', () async {
-      await provider.loadInitialData();
+    test(
+      'Starting session automatically starts QR rotation and sets countdown',
+      () async {
+        await provider.loadInitialData();
 
-      expect(provider.classes.isNotEmpty, isTrue);
-      expect(provider.selectedClass, isNotNull);
-      expect(provider.selectedSlot, isNotNull);
+        expect(provider.classes.isNotEmpty, isTrue);
+        expect(provider.selectedClass, isNotNull);
+        expect(provider.selectedSlot, isNotNull);
 
-      final started = await provider.startSession();
-      expect(started, isTrue);
-      expect(provider.hasActiveSession, isTrue);
-      expect(provider.isRotatingQr, isTrue);
-      expect(provider.currentTicket, isNotNull);
-      expect(provider.currentTicket!.generation, equals(1));
-      expect(provider.countdownSeconds, equals(30));
-    });
+        final started = await provider.startSession();
+        expect(started, isTrue);
+        expect(provider.hasActiveSession, isTrue);
+        expect(provider.isRotatingQr, isTrue);
+        expect(provider.currentTicket, isNotNull);
+        expect(provider.currentTicket!.generation, equals(1));
+        expect(
+          provider.countdownSeconds,
+          inInclusiveRange(
+            provider.currentTicket!.remainingSeconds,
+            provider.currentTicket!.remainingSeconds + 1,
+          ),
+        );
+      },
+    );
 
     test('checkTicketOnResume immediately refreshes ticket if expired during sleep', () async {
       await provider.loadInitialData();
@@ -79,7 +88,13 @@ void main() {
       // Now manual refresh
       await provider.refreshQrTicketNow();
       expect(provider.currentTicket!.generation, equals(2));
-      expect(provider.countdownSeconds, equals(30));
+      expect(
+        provider.countdownSeconds,
+        inInclusiveRange(
+          provider.currentTicket!.remainingSeconds,
+          provider.currentTicket!.remainingSeconds + 1,
+        ),
+      );
     });
 
     test('Toggling offline state marks provider as offline', () async {

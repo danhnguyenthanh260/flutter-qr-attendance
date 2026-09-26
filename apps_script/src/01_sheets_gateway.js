@@ -2,6 +2,7 @@ var GoogleSheetsGateway = (function () {
   'use strict';
 
   function Gateway(Domain, spreadsheetId) {
+    this._readCache = {};
     this._domain = Domain;
     this._spreadsheet = SpreadsheetApp.openById(
       Domain.requireString(spreadsheetId, 'ATTENDANCE_SPREADSHEET_ID')
@@ -9,6 +10,7 @@ var GoogleSheetsGateway = (function () {
   }
 
   Gateway.prototype.read = function (sheetName) {
+    if (this._readCache[sheetName]) return this._readCache[sheetName];
     var sheet = this._requireSheet(sheetName);
     var lastRow = sheet.getLastRow();
     var lastColumn = sheet.getLastColumn();
@@ -24,7 +26,7 @@ var GoogleSheetsGateway = (function () {
     });
     this._assertHeaders(sheetName, headers);
 
-    return values.slice(1).reduce(function (records, row, index) {
+    var records = values.slice(1).reduce(function (records, row, index) {
       var hasValue = row.some(function (value) {
         return !this._domain.isBlank(value);
       }, this);
@@ -39,9 +41,20 @@ var GoogleSheetsGateway = (function () {
       records.push({ rowNumber: index + 2, data: data });
       return records;
     }.bind(this), []);
+    this._readCache[sheetName] = records;
+    return records;
+  };
+
+  Gateway.prototype.ensureOptionalColumns = function (sheetName, columns) {
+    delete this._readCache[sheetName];
+    var sheet = this._requireSheet(sheetName);
+    var headers = this._headersForSheet(sheetName, sheet);
+    var missing = columns.filter(function (column) { return headers.indexOf(column) < 0; });
+    if (missing.length) sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
   };
 
   Gateway.prototype.append = function (sheetName, data) {
+    delete this._readCache[sheetName];
     var sheet = this._requireSheet(sheetName);
     var headers = this._headersForSheet(sheetName, sheet);
     var row = headers.map(function (header) {
@@ -53,6 +66,7 @@ var GoogleSheetsGateway = (function () {
   };
 
   Gateway.prototype.update = function (sheetName, rowNumber, patch) {
+    delete this._readCache[sheetName];
     var sheet = this._requireSheet(sheetName);
     var headers = this._headersForSheet(sheetName, sheet);
     if (!Number.isInteger(rowNumber) || rowNumber < 2 || rowNumber > sheet.getLastRow()) {
@@ -79,6 +93,7 @@ var GoogleSheetsGateway = (function () {
 
   Gateway.prototype.withLock = function (callback) {
     var lock = LockService.getScriptLock();
+    var started = Date.now();
     try {
       lock.waitLock(10000);
     } catch (error) {
@@ -86,13 +101,21 @@ var GoogleSheetsGateway = (function () {
     }
 
     try {
+      this._readCache = {};
       return callback();
     } finally {
-      lock.releaseLock();
+      // Persist buffered writes before another execution can replay a request.
+      try {
+        SpreadsheetApp.flush();
+      } finally {
+        lock.releaseLock();
+        console.info(JSON.stringify({event: 'sheet_lock_complete', ms: Date.now() - started}));
+      }
     }
   };
 
   Gateway.prototype.initializeSchema = function () {
+    this._readCache = {};
     var spreadsheet = this._spreadsheet;
     var domain = this._domain;
     Object.keys(domain.HEADERS).forEach(function (sheetName) {
