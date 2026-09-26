@@ -6,6 +6,7 @@ import 'package:flutter_qr_attendance/data/models/class_model.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
 import 'package:flutter_qr_attendance/data/models/teaching_overview.dart';
 import 'package:flutter_qr_attendance/data/repositories/teaching_repository.dart';
+import 'package:flutter_qr_attendance/data/services/attendance_api_exception.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
 import 'package:flutter_qr_attendance/features/qr/qr_display_view.dart';
 import 'package:flutter_qr_attendance/features/teaching/session_provider.dart';
@@ -39,6 +40,7 @@ class CalendarFixture extends MockAttendanceService
   }
   int starts = 0;
   int weeklyReads = 0;
+  bool failWeekly = false;
   String get date => DateTime.now().toIso8601String().substring(0, 10);
   @override
   Future<TeachingOverview> getTeachingOverview(String classId) async =>
@@ -67,6 +69,12 @@ class CalendarFixture extends MockAttendanceService
   @override
   Future<Map<String, TeachingOverview>> getWeeklyOverview() async {
     weeklyReads++;
+    if (failWeekly) {
+      throw const AttendanceApiException(
+        code: 'redirect_to_execution',
+        message: 'API chuyển ngược',
+      );
+    }
     return {
       for (final c in await getClasses()) c.id: await getTeachingOverview(c.id),
     };
@@ -87,6 +95,56 @@ class CalendarFixture extends MockAttendanceService
 
 void main() {
   setUpAll(loadCaptureFonts);
+  testWidgets('failed refresh retains last successful calendar', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = CalendarFixture();
+    final provider = SessionProvider(
+      service: service,
+      storage: MemorySessionStorage(),
+    );
+    addTearDown(provider.dispose);
+    await tester.pumpWidget(
+      ChangeNotifierProvider.value(
+        value: provider,
+        child: MaterialApp(home: Scaffold(body: SessionSelectionView())),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final before = find.textContaining('SE1913').evaluate().length;
+    expect(before, greaterThan(0));
+    service.failWeekly = true;
+    await tester.tap(find.byTooltip('Làm mới lịch'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('SE1913').evaluate().length, before);
+    expect(find.textContaining('Lịch lưu tạm từ'), findsOneWidget);
+    expect(find.textContaining('Chưa có lịch trong tuần này'), findsNothing);
+  });
+  testWidgets(
+    'failed first load exposes code and does not claim empty schedule',
+    (tester) async {
+      final service = CalendarFixture()..failWeekly = true;
+      final provider = SessionProvider(
+        service: service,
+        storage: MemorySessionStorage(),
+      );
+      addTearDown(provider.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: provider,
+          child: MaterialApp(home: Scaffold(body: SessionSelectionView())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('[redirect_to_execution]'), findsOneWidget);
+      expect(find.textContaining('Chưa có lịch trong tuần này'), findsNothing);
+      expect(find.textContaining('Log chẩn đoán:'), findsOneWidget);
+    },
+  );
   testWidgets(
     'all classes -> clicked lesson roster -> QR without any class selector',
     (tester) async {

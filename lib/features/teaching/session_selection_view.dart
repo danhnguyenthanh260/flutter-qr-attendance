@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/utils/performance_log.dart';
 import '../../data/models/class_model.dart';
 import '../../data/models/session_model.dart';
 import '../../data/models/teaching_overview.dart';
+import '../../data/services/attendance_api_exception.dart';
 import 'lesson_attendance_view.dart';
 import 'session_provider.dart';
 import 'weekly_schedule_grid.dart';
@@ -24,6 +26,9 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
   final _calendarScroll = ScrollController();
   bool _loading = false;
   String? _error;
+  DateTime? _lastUpdated;
+  bool _loaded = false;
+  bool _snapshotOnly = false;
   int _request = 0;
   static DateTime _monday(DateTime date) => DateTime(
     date.year,
@@ -47,10 +52,20 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
 
   Future<void> _initialize() async {
     final provider = context.read<SessionProvider>();
-    final startup = provider.classes.isEmpty
-        ? provider.loadInitialData()
+    final startup = !provider.isInitialized
+        ? provider.loadInitialData(loadDefaultSlots: false)
         : Future<void>.value();
-    await Future.wait([startup, _refresh()]);
+    if (!_loaded) {
+      final snapshot = await provider.readScheduleSnapshot();
+      if (mounted && snapshot != null && !_loaded) {
+        setState(() {
+          _data = snapshot.data;
+          _lastUpdated = snapshot.saved;
+          _snapshotOnly = true;
+        });
+      }
+    }
+    if (mounted) await Future.wait([startup, _refresh()]);
   }
 
   Future<void> _refresh() async {
@@ -63,11 +78,20 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
     });
     try {
       final data = await provider.loadWeeklyOverview();
-      if (mounted && request == _request) setState(() => _data = data);
-    } catch (_) {
+      if (mounted && request == _request) {
+        setState(() {
+          _data = data;
+          _loaded = true;
+          _snapshotOnly = false;
+          _lastUpdated = DateTime.now();
+        });
+      }
+    } catch (error) {
       if (mounted && request == _request) {
         setState(
-          () => _error = 'Không tải được lịch tuần. Dữ liệu đã có được giữ nguyên; hãy thử lại.',
+          () => _error = error is AttendanceApiException
+              ? 'Không tải được lịch tuần: ${error.message} [${error.code}]'
+              : 'Không tải được lịch tuần: lỗi kết nối hoặc dữ liệu. Hãy thử lại.',
         );
       }
     } finally {
@@ -76,6 +100,16 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
   }
 
   void _open(CalendarLesson lesson) {
+    if (_snapshotOnly) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Đây là lịch lưu tạm. Cần tải thành công dữ liệu máy chủ trước khi mở điểm danh.',
+          ),
+        ),
+      );
+      return;
+    }
     context.read<SessionProvider>().selectLesson(
       lesson.classModel,
       lesson.slot,
@@ -171,6 +205,12 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
             ),
           ],
         ),
+        if (_lastUpdated != null)
+          Text(
+            '${_error == null && !_snapshotOnly ? 'Cập nhật' : 'Lịch lưu tạm từ'}: ${DateFormat('dd/MM HH:mm:ss').format(_lastUpdated!)}',
+          ),
+        if (_error != null)
+          SelectableText('Log chẩn đoán: ${PerformanceLog.path}'),
         if (_loading || provider.isLoading) const LinearProgressIndicator(),
         if (_error != null || provider.errorMessage != null)
           Padding(
@@ -196,7 +236,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
               ),
             ),
           ),
-        if (!_loading && visible.isEmpty)
+        if (!_loading && _loaded && _error == null && visible.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(

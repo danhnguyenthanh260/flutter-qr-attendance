@@ -23,13 +23,14 @@ class CatalogStorage {
 
   Future<({DateTime saved, List<dynamic> items})?> read(
     String key,
-    DateTime now,
-  ) async {
+    DateTime now, {
+    Duration maxAge = const Duration(minutes: 5),
+  }) async {
     try {
       final data = jsonDecode(await _file(key).readAsString()) as Map;
       final saved = DateTime.parse(data['saved_at'] as String);
       final age = now.difference(saved);
-      if (age.isNegative || age > const Duration(minutes: 5)) return null;
+      if (age.isNegative || age > maxAge) return null;
       return (saved: saved, items: data['items'] as List<dynamic>);
     } catch (_) {
       return null;

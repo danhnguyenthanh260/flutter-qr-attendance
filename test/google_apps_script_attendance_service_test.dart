@@ -414,4 +414,123 @@ void main() {
       );
     },
   );
+
+  test(
+    'return-to-exec read retries once at configured endpoint and recovers',
+    () async {
+      var executions = 0;
+      final client = MockClient((request) async {
+        if (request.url.host == 'script.google.com') {
+          executions++;
+          if (executions == 2) {
+            return http.Response('{"ok":true,"data":[]}', 200);
+          }
+          return http.Response(
+            '',
+            302,
+            headers: {
+              'location': 'https://script.googleusercontent.com/macros/echo?private=secret',
+            },
+          );
+        }
+        return http.Response(
+          '',
+          302,
+          headers: {
+            'location':
+                'https://script.google.com/macros/s/example/exec?injected=bad',
+          },
+        );
+      });
+      expect(await createService(client).listSessions(), isEmpty);
+      expect(executions, 2);
+    },
+  );
+  test(
+    'persistent return-to-exec stops after two reads with explicit error',
+    () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        return http.Response(
+          '',
+          302,
+          headers: {
+            'location': request.url.host == 'script.google.com'
+                ? 'https://script.googleusercontent.com/macros/echo'
+                : 'https://script.google.com/macros/s/example/exec',
+          },
+        );
+      });
+      await expectLater(
+        createService(client).listSessions(),
+        throwsA(
+          isA<TeacherApiException>().having(
+            (e) => e.code,
+            'code',
+            'redirect_to_execution',
+          ),
+        ),
+      );
+      expect(calls, 4);
+    },
+  );
+  test(
+    'POST return-to-exec is unconfirmed and never replays a write',
+    () async {
+      var posts = 0;
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        if (request.method == 'POST') posts++;
+        return http.Response(
+          '',
+          302,
+          headers: {
+            'location': request.url.host == 'script.google.com'
+                ? 'https://script.googleusercontent.com/macros/echo'
+                : 'https://script.google.com/macros/s/example/exec',
+          },
+        );
+      });
+      await expectLater(
+        createService(client).closeSession('session-test'),
+        throwsA(
+          isA<TeacherApiException>().having(
+            (e) => e.code,
+            'code',
+            'operation_unconfirmed',
+          ),
+        ),
+      );
+      expect(posts, 1);
+      expect(calls, 2);
+    },
+  );
+  test('untrusted content redirect is not followed', () async {
+    var calls = 0;
+    final client = MockClient((request) async {
+      calls++;
+      return http.Response(
+        '',
+        302,
+        headers: {
+          'location': calls == 1
+              ? 'https://script.googleusercontent.com/macros/echo'
+              : 'https://untrusted.invalid/private',
+        },
+      );
+    });
+    await expectLater(
+      createService(client).listSessions(),
+      throwsA(
+        isA<TeacherApiException>().having(
+          (e) => e.code,
+          'code',
+          'redirect_untrusted',
+        ),
+      ),
+    );
+    expect(calls, 2);
+  });
 }

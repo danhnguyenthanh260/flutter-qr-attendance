@@ -20,3 +20,11 @@ Evidence, performance caveats and remaining requirements: docs/design/verificati
 - Added six canonical ClassSlots rows A8:H13 to Test_PRM392: Sep26 x3, Sep27 x2, Sep28 x1; API readback verified. No attendance/session writes.
 - Vietnam calendar policy: today/future allowed; past start and QR issuance rejected server-side. Historical results, receipt replay and closing remain available. Future UI confirmation; explicit close-current-session action in roster.
 - Teacher v19 deployed, legacy student v10 unchanged. 33 Node tests, 127 Flutter tests; analyzer clean. Windows build 1.4.1+20260926. No accepted live Form submission tested.
+
+## Redirect investigation follow-up
+Live return-to-exec 302 reproduced; nonce does not fix. Deployment v19 access verified. No production mutations. Research and acceptance plan: docs/design/redirect-remediation-research-2026-09-26.md. Root cause inside Google delivery remains unproven; do not claim fixed.
+
+## 1.4.2 — bounded redirect recovery and diagnostics
+- Implemented request tracing, safe release HTTP logs, typed redirect errors, read-only bounded retry and no POST replay; weekly snapshot/error UI; omit redundant default-slot startup request.
+- Teacher v20 (legacy v10 unchanged); Windows 1.4.2. 134 Flutter / 33 Node tests, analyzer and architecture pass. Live 20/20 reads succeeded, median 5116.5 ms, nearest-rank p95 10808 ms.
+- OAuth/scripts.run prototype and real attendance E2E remain pending. Evidence and limitations: docs/design/verification-1.4.2.md.

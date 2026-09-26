@@ -8,4 +8,4 @@
 | qr-recovery-20260925 | flutter-qr-attendance | flutter-qr-attendance | v14 + Windows 1.1.1 verified through Form opening; accepted submission pending test account | 2026-09-25 | tasks/qr-recovery-20260925/task.md |
 | ui-architecture | flutter-qr-attendance | flutter-qr-attendance | 1.2.0 built and opened; architecture, tests and native UI verified | 2026-09-25 | tasks/ui-architecture/task.md |
 | direct-form-qr | flutter-qr-attendance | flutter-qr-attendance | v15 deployed; 24 tests pass; real Form submission pending | 2026-09-25 | tasks/direct-form-qr/task.md |
-| weekly-roster-implementation | flutter-qr-attendance | flutter-qr-attendance | all-class weekly → roster → QR; teacher v18; Windows 1.4.0; live import/E2E pending | 2026-09-26 | tasks/weekly-roster-implementation/task.md |
+| weekly-roster-implementation | flutter-qr-attendance | flutter-qr-attendance | redirect recovery/logging; teacher v20; Windows 1.4.2; 20/20 reads verified; attendance E2E pending | 2026-09-26 | tasks/weekly-roster-implementation/task.md |

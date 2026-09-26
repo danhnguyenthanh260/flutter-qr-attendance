@@ -49,6 +49,25 @@ class SessionProvider extends ChangeNotifier {
   bool _isClosingSession = false;
   String? _errorMessage;
 
+  Future<
+    ({
+      DateTime saved,
+      List<ClassModel> classes,
+      Map<String, TeachingOverview> data,
+    })?
+  >
+  readScheduleSnapshot() async {
+    final service = _service;
+    if (service is! ScheduleSnapshotSource) return null;
+    final snapshot = await (service as ScheduleSnapshotSource)
+        .readScheduleSnapshot();
+    if (snapshot != null && _classes.isEmpty) {
+      _classes = snapshot.classes;
+      notifyListeners();
+    }
+    return snapshot;
+  }
+
   Future<Map<String, TeachingOverview>> loadWeeklyOverview() async {
     final service = _service;
     if (service is TeachingRepository) {
@@ -124,10 +143,12 @@ class SessionProvider extends ChangeNotifier {
   // Load initial classes and restore session state (Issue #21)
   bool get isInitialized => _classes.isNotEmpty && _sessionVerified;
 
-  Future<void> loadInitialData({bool force = false}) =>
-      _startup ??= _loadInitialData();
+  Future<void> loadInitialData({
+    bool force = false,
+    bool loadDefaultSlots = true,
+  }) => _startup ??= _loadInitialData(loadDefaultSlots: loadDefaultSlots);
 
-  Future<void> _loadInitialData() async {
+  Future<void> _loadInitialData({required bool loadDefaultSlots}) async {
     _isLoading = true;
     _isRestoringSession = true;
     _sessionVerified = false;
@@ -139,7 +160,7 @@ class SessionProvider extends ChangeNotifier {
       PerformanceLog.mark('classes_ready', {'count': _classes.length});
       _isLoading = false;
       notifyListeners();
-      if (_classes.isNotEmpty) {
+      if (loadDefaultSlots && _classes.isNotEmpty) {
         await selectClass(_selectedClass ?? _classes.first);
       }
     } catch (e) {

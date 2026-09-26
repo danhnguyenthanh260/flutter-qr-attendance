@@ -107,7 +107,8 @@ function createTeacherApiResponse_(method, payload) {
     envelope = AttendanceDomain.errorEnvelope(error);
   }
   console.info(JSON.stringify({event: 'teacher_api_complete', action: String(payload.action).slice(0, 40),
-    ms: Date.now() - started, ok: envelope.ok}));
+    ms: Date.now() - started, ok: envelope.ok, code: envelope.error ? envelope.error.code : null,
+    trace_id: /^[0-9-]{1,64}$/.test(String(payload._trace_id || '')) ? payload._trace_id : null}));
   return createTeacherApiOutput_(envelope);
 }
 
