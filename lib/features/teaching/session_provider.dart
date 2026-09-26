@@ -72,7 +72,9 @@ class SessionProvider extends ChangeNotifier {
   bool get isOffline => qr.isOffline;
 
   // Load initial classes and restore session state (Issue #21)
-  Future<void> loadInitialData() => _startup ??= _loadInitialData();
+  bool get isInitialized => _classes.isNotEmpty && _sessionVerified;
+
+  Future<void> loadInitialData({bool force = false}) => _startup ??= _loadInitialData();
 
   Future<void> _loadInitialData() async {
     _isLoading = true;
