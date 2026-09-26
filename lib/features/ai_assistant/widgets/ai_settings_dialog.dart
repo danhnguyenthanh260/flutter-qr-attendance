@@ -73,7 +73,7 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Hệ thống hỗ trợ gọi mô hình **Google Gemini 1.5 Flash** với cơ chế **Xoay vòng đa khóa (Key Rotation)** và **Tự động Failover** khi gặp lỗi Rate Limit (429).',
+                'Hệ thống hỗ trợ gọi mô hình **Google Gemini 2.5 Flash** với cơ chế **Xoay vòng đa khóa (Key Rotation)** và **Tự động Failover** khi gặp lỗi Rate Limit (429).',
                 style: AppTypography.bodyRegular,
               ),
               const SizedBox(height: 16),

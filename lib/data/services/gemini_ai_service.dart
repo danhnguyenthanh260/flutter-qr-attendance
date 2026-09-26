@@ -138,9 +138,12 @@ class AttendancePromptBuilder {
 class GeminiRestService implements AttendanceAiService {
   final http.Client _client;
   final GeminiKeyRotator _rotator;
-  static const String _geminiModel = 'gemini-1.5-flash';
-  static const String _apiBaseUrl =
-      'https://generativelanguage.googleapis.com/v1beta/models/$_geminiModel:generateContent';
+  static const List<String> _candidateModels = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-flash-latest',
+    'gemini-1.5-flash',
+  ];
 
   GeminiRestService({http.Client? client, GeminiKeyRotator? rotator})
       : _client = client ?? http.Client(),
@@ -211,45 +214,77 @@ class GeminiRestService implements AttendanceAiService {
       final key = _rotator.getNextKey();
       if (key == null || key.isEmpty) break;
 
-      final uri = Uri.parse('$_apiBaseUrl?key=$key');
+      for (final model in _candidateModels) {
+        final uri = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key',
+        );
 
-      try {
-        final response = await _client
-            .post(
-              uri,
-              headers: {'Content-Type': 'application/json; charset=utf-8'},
-              body: jsonEncode(payload),
-            )
-            .timeout(const Duration(seconds: 15));
+        try {
+          final response = await _client
+              .post(
+                uri,
+                headers: {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'x-goog-api-key': key,
+                },
+                body: jsonEncode(payload),
+              )
+              .timeout(const Duration(seconds: 15));
 
-        if (response.statusCode == 200) {
-          final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-          final candidates = data['candidates'] as List?;
-          if (candidates != null && candidates.isNotEmpty) {
-            final content = candidates[0]['content'] as Map<String, dynamic>?;
-            final parts = content?['parts'] as List?;
-            if (parts != null && parts.isNotEmpty) {
-              return parts[0]['text'] as String? ?? 'Không nhận được phản hồi từ AI.';
+          if (response.statusCode == 200) {
+            final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+            final candidates = data['candidates'] as List?;
+            if (candidates != null && candidates.isNotEmpty) {
+              final content = candidates[0]['content'] as Map<String, dynamic>?;
+              final parts = content?['parts'] as List?;
+              if (parts != null && parts.isNotEmpty) {
+                return parts[0]['text'] as String? ?? 'Không nhận được phản hồi từ AI.';
+              }
             }
+            return 'Không thể phân tích phản hồi từ Gemini API.';
+          } else if (response.statusCode == 404) {
+            // Model này không tìm thấy trên endpoint này -> tự động thử model tiếp theo trong candidateModels
+            lastError = 'Mô hình $model không tìm thấy (404).';
+            continue;
+          } else if (response.statusCode == 429) {
+            // Quota / Rate limit error -> tự động chuyển sang key kế tiếp
+            _rotator.rotateOnFailure(key);
+            lastError = 'Key ${GeminiKeyRotator.maskKey(key)} đã chạm ngưỡng Rate Limit (429).';
+            break;
+          } else if (response.statusCode == 400 || response.statusCode == 401 || response.statusCode == 403) {
+            // Key không hợp lệ hoặc bị từ chối
+            _rotator.rotateOnFailure(key);
+            String detail = '';
+            try {
+              final errBody = jsonDecode(utf8.decode(response.bodyBytes));
+              if (errBody is Map && errBody['error'] is Map) {
+                final errMap = errBody['error'] as Map;
+                final msg = errMap['message']?.toString() ?? '';
+                final details = errMap['details'] as List?;
+                String? reason;
+                if (details != null && details.isNotEmpty) {
+                  final firstDetail = details.first;
+                  if (firstDetail is Map && firstDetail['reason'] != null) {
+                    reason = firstDetail['reason'].toString();
+                  }
+                }
+                if (reason != null && reason.isNotEmpty) {
+                  detail = ': $reason';
+                } else if (msg.isNotEmpty) {
+                  detail = ': $msg';
+                }
+              }
+            } catch (_) {}
+            lastError = 'Key ${GeminiKeyRotator.maskKey(key)} không hợp lệ hoặc bị từ chối (${response.statusCode}$detail).';
+            break;
+          } else {
+            lastError = 'Gemini API trả về mã lỗi: ${response.statusCode}. Chi tiết: ${response.body}';
+            break;
           }
-          return 'Không thể phân tích phản hồi từ Gemini API.';
-        } else if (response.statusCode == 429) {
-          // Quota / Rate limit error -> tự động chuyển sang key kế tiếp
-          _rotator.rotateOnFailure(key);
-          lastError = 'Key ${GeminiKeyRotator.maskKey(key)} đã chạm ngưỡng Rate Limit (429).';
-          continue;
-        } else if (response.statusCode == 400 || response.statusCode == 403) {
-          // Key không hợp lệ hoặc bị từ chối
-          _rotator.rotateOnFailure(key);
-          lastError = 'Key ${GeminiKeyRotator.maskKey(key)} không hợp lệ hoặc bị từ chối (${response.statusCode}).';
-          continue;
-        } else {
-          lastError = 'Gemini API trả về mã lỗi: ${response.statusCode}. Chi tiết: ${response.body}';
-          continue;
+        } catch (e) {
+          lastError = 'Lỗi kết nối khi gọi Key ${GeminiKeyRotator.maskKey(key)}: $e';
+          break;
         }
-      } catch (e) {
-        lastError = 'Lỗi kết nối khi gọi Key ${GeminiKeyRotator.maskKey(key)}: $e';
-        continue;
       }
     }
 

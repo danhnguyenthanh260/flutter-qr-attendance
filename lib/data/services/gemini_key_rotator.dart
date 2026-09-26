@@ -41,12 +41,16 @@ class GeminiKeyRotator {
     }
   }
 
+  static final RegExp _validKeyPattern = RegExp(r'^[A-Za-z0-9_\-\.]+$');
+
   /// Cập nhật toàn bộ danh sách keys
   void setKeys(List<String> newKeys) {
     _keys.clear();
     for (final rawKey in newKeys) {
       final trimmed = rawKey.trim();
-      if (trimmed.isNotEmpty && !_keys.contains(trimmed)) {
+      if (trimmed.isNotEmpty &&
+          _validKeyPattern.hasMatch(trimmed) &&
+          !_keys.contains(trimmed)) {
         _keys.add(trimmed);
       }
     }
@@ -56,7 +60,9 @@ class GeminiKeyRotator {
   /// Thêm một key mới vào pool xoay vòng
   bool addKey(String key) {
     final trimmed = key.trim();
-    if (trimmed.isEmpty || _keys.contains(trimmed)) {
+    if (trimmed.isEmpty ||
+        !_validKeyPattern.hasMatch(trimmed) ||
+        _keys.contains(trimmed)) {
       return false;
     }
     _keys.add(trimmed);
