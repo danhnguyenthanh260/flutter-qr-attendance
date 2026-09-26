@@ -20,7 +20,8 @@
 - Layout checks 1024/1280/1366/1920, text scale 100%/150%; render fixture. Native Windows đã thấy lịch đọc CLASS_001 và preview SE1919 với 37 sinh viên. Chưa bấm xác nhận import hoặc submit điểm danh.
 - Backend teacher v17, legacy student v10 giữ nguyên. Remote HEAD kiểm tra v15 trước thay đổi; v16/v17 triển khai cùng teacher URL/access.
 - GET class_overview live CLASS_001: 1 slot, 10 roster, 5 sessions, 0 attendance. Một lượt trước tối ưu 32.62s; một lượt sau tối ưu 7.41s. Đây không phải benchmark/đảm bảo SLA; lỗi HTML ban đầu chưa xác định nguyên nhân phía Google.
-- Windows build release 1.3.0+20260926, bundle `build/trial-1.3.0`; shortcut desktop đổi từ 1.2.1 sang 1.3.0.
+- Windows build release 1.3.0+20260926; bundle cuối sau sửa chiều rộng lịch: `build/trial-1.3.0-ready`. Shortcut desktop 1.3.0 đã trỏ vào bundle cuối. Cửa sổ bản thử trước đó được người dùng thu nhỏ; không thay file executable đang chạy. Cần đóng cửa sổ và mở shortcut để nhận chỉnh sửa cuối.
+- Final executable SHA256: `73FB5B89EE7D0FFE6987E70C110DF7CED5E011262A471A0F67A8B16816AB8DEF`. Format 72 files không đổi, analyzer clean, architecture check pass. Source implementation commit 29d1f9c, chưa push GitHub trong lượt này.
 
 ## Còn thiếu để nghiệm thu đầy đủ yêu cầu gốc
 
