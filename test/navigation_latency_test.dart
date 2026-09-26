@@ -131,7 +131,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.byType(AttendanceView), findsOneWidget);
 
-          await tester.tap(find.widgetWithText(InkWell, 'Phiên điểm danh'));
+          await tester.tap(find.widgetWithText(InkWell, 'Lịch giảng dạy'));
           await tester.pumpAndSettle();
           expect(find.byType(SessionSelectionView), findsOneWidget);
         }
@@ -199,7 +199,7 @@ void main() {
         );
 
         // Verify first frame renders immediately: Card headers and form structure exist
-        expect(find.text('Lịch giảng dạy'), findsOneWidget);
+        expect(find.text('Lịch giảng dạy'), findsWidgets);
         expect(find.text('Hôm nay'), findsOneWidget);
         expect(find.byType(Table), findsOneWidget);
       },

@@ -87,16 +87,22 @@ var AttendanceRepository = (function (Domain) {
     return {class_id: classId, total_students: students.length, added: students.length - existing.length};
   };
 
+  Repository.prototype.getWeeklyOverview = function () {
+    var result = {};
+    this.listClasses().forEach(function (c) { result[c.id] = this.getTeachingOverview(c.id); }, this);
+    return result;
+  };
+
   Repository.prototype.getTeachingOverview = function (classId) {
     var sessions = this.listSessions({class_id: classId});
     var ids = {};
     sessions.forEach(function (s) { ids[s.id] = true; });
-    return {slots: this.listSlotsForClass(classId), roster: this.getRoster(classId),
+    return {slots: this.listSlotsForClass(classId), roster: this.getRoster(classId, true),
       sessions: sessions, attendance: this._records(Domain.SHEETS.attendance)
         .filter(function (r) { return ids[r.session_id]; }).map(this._toAttendance)};
   };
 
-  Repository.prototype.getRoster = function (classId) {
+  Repository.prototype.getRoster = function (classId, allowEmpty) {
     this._requireClass(classId);
     var roster = this._records(Domain.SHEETS.roster)
       .filter(function (record) {
@@ -113,7 +119,7 @@ var AttendanceRepository = (function (Domain) {
           member_code: record.member_code || '',
         };
       });
-    if (roster.length === 0) {
+    if (roster.length === 0 && !allowEmpty) {
       Domain.fail('roster_missing', 'No active roster exists for this class.', {
         class_id: classId,
       });

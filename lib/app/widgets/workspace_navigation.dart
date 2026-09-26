@@ -14,7 +14,7 @@ class WorkspaceNavigation extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final bool compact;
   static const destinations = [
-    (label: 'Phiên điểm danh', icon: AppIcons.session),
+    (label: 'Lịch giảng dạy', icon: AppIcons.session),
     (label: 'Bảng điểm danh', icon: AppIcons.attendance),
     (label: 'Dữ liệu lớp', icon: AppIcons.roster),
   ];

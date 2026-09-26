@@ -38,8 +38,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('QR Attendance'), findsOneWidget);
-    expect(find.text('Phiên điểm danh'), findsOneWidget);
-    expect(find.text('Lịch giảng dạy'), findsOneWidget);
+    expect(find.text('Lịch giảng dạy'), findsWidgets);
+    expect(find.text('Lịch giảng dạy'), findsWidgets);
     expect(find.text('Hôm nay'), findsOneWidget);
   });
 }

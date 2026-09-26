@@ -93,6 +93,17 @@ AttendanceService createConfiguredTeacherAttendanceService() {
 class GoogleAppsScriptAttendanceService
     implements AttendanceService, TeachingRepository {
   @override
+  Future<Map<String, TeachingOverview>> getWeeklyOverview() async {
+    final data = _asMap(await _get('weekly_overview'), 'weekly_overview');
+    return data.map(
+      (key, value) => MapEntry(
+        key,
+        TeachingOverview.fromJson(_asMap(value, 'class overview')),
+      ),
+    );
+  }
+
+  @override
   Future<TeachingOverview> getTeachingOverview(String classId) async =>
       TeachingOverview.fromJson(
         _asMap(

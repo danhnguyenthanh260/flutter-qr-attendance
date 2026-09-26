@@ -679,4 +679,18 @@ test('session lists preserve class names beyond the first record', () => {
   assert.equal(sessions[0].class_name,sessions[1].class_name);
   assert.equal(sessions[1].class_name,'PRM392 - Flutter');
 });
+
+test('weekly overview includes all classes and empty rosters without creating sessions', () => {
+  const {service,gateway}=createFixture();
+  const context={service,config:{teacherApiKey:'teacher'}};
+  const result=TeacherApiContract.execute('GET',{action:'weekly_overview',teacher_key:'teacher'},context);
+  assert.equal(result.ok,true);
+  assert.deepEqual(Object.keys(result.data).sort(),['CLASS_1','CLASS_2']);
+  assert.equal(result.data.CLASS_1.roster.length,1);
+  assert.equal(result.data.CLASS_2.roster.length,0);
+  assert.equal(result.data.CLASS_1.slots[0].id,'SLOT_1');
+  assert.equal(result.data.CLASS_2.slots[0].id,'SLOT_2');
+  assert.equal(gateway.rows(Domain.SHEETS.sessions).length,0);
+  assert.throws(()=>TeacherApiContract.execute('GET',{action:'weekly_overview',teacher_key:'wrong'},context),/authentication/);
+});
 }

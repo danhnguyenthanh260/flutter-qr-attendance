@@ -17,6 +17,10 @@ var AttendanceDataService = (function (Repository) {
     return this._mutate(function () { return this._repository.importRoster(input); });
   };
 
+  Service.prototype.getWeeklyOverview = function () {
+    return this._settleAndRead(function () { return this._repository.getWeeklyOverview(); });
+  };
+
   Service.prototype.getTeachingOverview = function (classId) {
     return this._settleAndRead(function () { return this._repository.getTeachingOverview(classId); });
   };

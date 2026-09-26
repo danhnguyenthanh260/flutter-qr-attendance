@@ -48,6 +48,29 @@ class SessionProvider extends ChangeNotifier {
   bool _isClosingSession = false;
   String? _errorMessage;
 
+  Future<Map<String, TeachingOverview>> loadWeeklyOverview() async {
+    final service = _service;
+    if (service is TeachingRepository) {
+      return (service as TeachingRepository).getWeeklyOverview();
+    }
+    final classes = await service.getClasses();
+    final entries = await Future.wait(
+      classes.map((c) async => MapEntry(c.id, await loadOverview(c.id))),
+    );
+    return Map.fromEntries(entries);
+  }
+
+  void selectLesson(ClassModel classModel, SessionSlot slot) {
+    // The calendar already resolved the class and exact dated slot. Do not
+    // fetch another slot list or allow an older selection request to replace it.
+    _slotRequest++;
+    _selectedClass = classModel;
+    _slots = [slot];
+    _selectedSlot = slot;
+    _isLoadingSlots = false;
+    notifyListeners();
+  }
+
   Future<TeachingOverview> loadOverview(String classId) async {
     final service = _service;
     if (service is TeachingRepository) {

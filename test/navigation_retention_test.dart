@@ -50,7 +50,7 @@ void main() {
       await tester.pumpAndSettle();
       final requests = service.listSessionsCalls;
       for (var i = 0; i < 10; i++) {
-        await tester.tap(find.text('Phiên điểm danh'));
+        await tester.tap(find.text('Lịch giảng dạy'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Bảng điểm danh', skipOffstage: true));
         await tester.pumpAndSettle();

@@ -9,3 +9,9 @@ Implemented weekly class-filtered calendar, lesson drilldown/date guard, weekly 
 Teacher deployment v17 (student legacy v10 unchanged). 125 Flutter tests, 30 Node tests, architecture check pass. Windows 1.3.0 built; native calendar and 37-row local roster preview observed. Two source files hash-verified in bundle. No live import/attendance submission performed. Existing session preserved.
 
 Evidence, performance caveats and remaining requirements: docs/design/verification-1.3.0.md. Release packaging and final checks tracked there; do not claim full FAP parity or accepted live attendance.
+
+## User correction implemented — 1.4.0
+- User rejected class-filter-first flow. Replaced with all-class weekly schedule → clicked lesson roster → attendance/QR; removed old session form. Separate WeeklyScheduleGrid and LessonAttendanceView components; exact lesson selection cancels stale slot requests.
+- Authenticated weekly_overview endpoint deployed teacher v18, student v10 unchanged. No live roster imports or submissions.
+- 126 Flutter / 31 backend tests, clean analyzer/format/architecture. Test explicitly validates two simultaneous classes, no selector, correct roster/session and retained calendar.
+- Built and launched trial-1.4.0, desktop shortcut renamed accordingly. Native all-class calendar observed; user began interacting, so stopped automation. Source evidence and known limits: docs/design/verification-1.4.0.md.

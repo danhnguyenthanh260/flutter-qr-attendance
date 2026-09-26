@@ -16,6 +16,8 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'GET') {
       switch (action) {
+        case 'weekly_overview':
+          return Domain.success(service.getWeeklyOverview());
         case 'class_overview':
           return Domain.success(service.getTeachingOverview(Domain.requireString(payload.class_id, 'class_id')));
         case 'classes':
