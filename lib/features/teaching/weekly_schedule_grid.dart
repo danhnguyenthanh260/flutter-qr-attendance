@@ -120,9 +120,11 @@ class WeeklyScheduleGrid extends StatelessWidget {
                 if (lesson.classModel.room.isNotEmpty)
                   Text('Phòng ${lesson.classModel.room}'),
                 Text(
-                  '${lesson.data?.present(lesson.slot) ?? 0}/${lesson.data?.roster.length ?? lesson.classModel.totalStudents} đã điểm danh',
+                  lesson.data == null
+                      ? 'Chưa tải danh sách sinh viên'
+                      : '${lesson.data!.present(lesson.slot)}/${lesson.data!.roster.length} đã điểm danh',
                 ),
-                Text(status),
+                Text(lesson.data == null ? 'Lịch lưu tạm' : status),
               ],
             ),
           ),

@@ -16,6 +16,12 @@ var TeacherApiContract = (function (Domain, StudentService) {
 
     if (method === 'GET') {
       switch (action) {
+        case 'qr_receipt':
+          return Domain.success(StudentService.getQrReceipt(service, context.studentConfig,
+            Domain.requireString(payload.session_id, 'session_id'),
+            Domain.requireString(payload.request_id, 'request_id'), context.formGateway));
+        case 'workspace':
+          return Domain.success(service.getWorkspace());
         case 'weekly_overview':
           return Domain.success(service.getWeeklyOverview());
         case 'class_overview':
@@ -98,7 +104,7 @@ function createTeacherApiResponse_(method, payload) {
   var started = Date.now();
   try {
     var context = AttendanceConfig.createLiveContext();
-    if (payload.action === 'issue_qr') {
+    if (payload.action === 'issue_qr' || payload.action === 'qr_receipt') {
       context.studentConfig = AttendanceConfig.getStudentFlowConfig();
       context.formGateway = AttendanceFormGateway;
     }

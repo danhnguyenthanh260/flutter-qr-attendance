@@ -52,9 +52,6 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
 
   Future<void> _initialize() async {
     final provider = context.read<SessionProvider>();
-    final startup = !provider.isInitialized
-        ? provider.loadInitialData(loadDefaultSlots: false)
-        : Future<void>.value();
     if (!_loaded) {
       final snapshot = await provider.readScheduleSnapshot();
       if (mounted && snapshot != null && !_loaded) {
@@ -65,7 +62,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
         });
       }
     }
-    if (mounted) await Future.wait([startup, _refresh()]);
+    if (mounted) await _refresh();
   }
 
   Future<void> _refresh() async {
@@ -77,10 +74,14 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
       _error = null;
     });
     try {
-      final data = await provider.loadWeeklyOverview();
+      final data = await provider.refreshTeachingWorkspace();
       if (mounted && request == _request) {
         setState(() {
           _data = data;
+          if (_selected != null &&
+              !data.containsKey(_selected!.classModel.id)) {
+            _selected = null;
+          }
           _loaded = true;
           _snapshotOnly = false;
           _lastUpdated = DateTime.now();
@@ -151,7 +152,7 @@ class _SessionSelectionViewState extends State<SessionSelectionView> {
     final all = <CalendarLesson>[
       for (final c in provider.classes)
         for (final slot in _data[c.id]?.slots ?? <SessionSlot>[])
-          CalendarLesson(c, slot, _data[c.id]!),
+          CalendarLesson(c, slot, _snapshotOnly ? null : _data[c.id]),
     ];
     final end = _week.add(const Duration(days: 7));
     final visible = all.where((lesson) {

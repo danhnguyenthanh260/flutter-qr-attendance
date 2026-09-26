@@ -433,6 +433,25 @@ var AttendanceRepository = (function (Domain) {
     return record;
   };
 
+  Repository.prototype.getQrReceipt = function (sessionId, requestId) {
+    Domain.requireString(requestId, 'request_id');
+    if (!/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) {
+      Domain.fail('validation_error', 'Invalid QR request_id.', null);
+    }
+    var session = this._requireSession(sessionId);
+    if (session.status !== 'active') Domain.fail('session_not_active', 'Session is not active.', null);
+    this._requireAttendanceDate(session.session_date);
+    var ticket = this._records(Domain.SHEETS.ticketStates).find(function (record) {
+      return record.ticket_id === 'TKT_REQ_' + requestId && record.session_id === sessionId;
+    });
+    if (!ticket) return null;
+    // Only confirm a fully committed direct-form ticket. Never create or extend it.
+    if (ticket.status === 'direct_form' && !this._records(Domain.SHEETS.grants).some(function (record) {
+      return record.grant_id === 'FORM_' + ticket.ticket_id && record.session_id === sessionId;
+    })) return null;
+    return this._toTicket(ticket);
+  };
+
   Repository.prototype.issueQrTicket = function (input) {
     input = input || {};
     var sessionId = Domain.requireString(input.session_id, 'session_id');

@@ -68,6 +68,34 @@ class SessionProvider extends ChangeNotifier {
     return snapshot;
   }
 
+  Future<Map<String, TeachingOverview>> refreshTeachingWorkspace() async {
+    final service = _service;
+    if (service is! TeachingWorkspaceRepository) {
+      await loadInitialData(loadDefaultSlots: false);
+      return loadWeeklyOverview();
+    }
+    final workspace = await (service as TeachingWorkspaceRepository)
+        .refreshWorkspace();
+    if (_isDisposed) return workspace.overview;
+    if (_activeSession?.id != workspace.activeSession?.id) {
+      stopQrRotation();
+    }
+    _classes = workspace.classes;
+    _activeSession = workspace.activeSession;
+    _sessionVerified = true;
+    _errorMessage = null;
+    _isLoading = false;
+    _isRestoringSession = false;
+    if (_activeSession == null) {
+      stopQrRotation();
+      await _storage.clearActiveSession();
+    } else {
+      await _storage.saveActiveSession(_activeSession!);
+    }
+    if (!_isDisposed) notifyListeners();
+    return workspace.overview;
+  }
+
   Future<Map<String, TeachingOverview>> loadWeeklyOverview() async {
     final service = _service;
     if (service is TeachingRepository) {

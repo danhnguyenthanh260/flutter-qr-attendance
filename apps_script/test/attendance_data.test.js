@@ -709,4 +709,29 @@ test('future scheduled lesson can be opened before its calendar date', () => {
   setNow('2026-09-18T16:59:59Z');
   assert.equal(service.startSession(startInput()).slot.date, '2026-09-19');
 });
+test('workspace returns only active class catalog and corresponding overview together', () => {
+  const {service,gateway} = createFixture();
+  const before=service.getWorkspace();
+  assert.equal(before.classes.length,2);
+  assert.deepEqual(Object.keys(before.overview).sort(),before.classes.map(c=>c.id).sort());
+  gateway.update(Domain.SHEETS.classes,2,{is_active:false});
+  const after=service.getWorkspace();
+  assert.deepEqual(after.classes.map(c=>c.id),['CLASS_2']);
+  assert.deepEqual(Object.keys(after.overview),['CLASS_2']);
+  assert.equal(after.active_session,null);
+});
+test('QR receipt is read-only, scoped and never extends ticket lifetime', () => {
+  const {service,gateway,setNow}=createFixture();
+  const session=service.startSession(startInput());
+  const requestId='receipt_test_1234567890';
+  assert.equal(service.getQrReceipt(session.id,requestId),null);
+  const ticket=service.issueQrTicket({session_id:session.id,request_id:requestId,valid_seconds:30,direct_form:true});
+  const before=JSON.stringify(gateway._tables);
+  setNow('2026-09-19T08:00:10Z');
+  assert.deepEqual(service.getQrReceipt(session.id,requestId),ticket);
+  assert.equal(JSON.stringify(gateway._tables),before);
+  assert.equal(service.getQrReceipt(session.id,'different_request_123456'),null);
+  service.requestCloseSession(session.id);
+  assert.throws(()=>service.getQrReceipt(session.id,requestId),{code:'session_not_active'});
+});
 }

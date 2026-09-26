@@ -93,8 +93,55 @@ class CalendarFixture extends MockAttendanceService
   }
 }
 
+class WorkspaceFixture extends CalendarFixture
+    implements TeachingWorkspaceRepository {
+  bool hideFirstClass = false;
+  @override
+  Future<TeachingWorkspace> refreshWorkspace() async {
+    final classes = (await getClasses())
+        .where((c) => !hideFirstClass || c.id != 'c1')
+        .toList();
+    return TeachingWorkspace(
+      classes: classes,
+      overview: {
+        for (final c in classes) c.id: await getTeachingOverview(c.id),
+      },
+      activeSession: null,
+    );
+  }
+}
+
 void main() {
   setUpAll(loadCaptureFonts);
+  testWidgets(
+    'workspace refresh removes hidden classes from visible calendar',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = WorkspaceFixture();
+      final provider = SessionProvider(
+        service: service,
+        storage: MemorySessionStorage(),
+      );
+      addTearDown(provider.dispose);
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: provider,
+          child: MaterialApp(home: Scaffold(body: SessionSelectionView())),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('SE1913'), findsOneWidget);
+      service.hideFirstClass = true;
+      await tester.tap(find.byTooltip('Làm mới lịch'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('SE1913'), findsNothing);
+      expect(find.textContaining('SE1919'), findsOneWidget);
+      expect(provider.classes.map((c) => c.id), ['c2']);
+    },
+  );
   testWidgets('failed refresh retains last successful calendar', (
     tester,
   ) async {

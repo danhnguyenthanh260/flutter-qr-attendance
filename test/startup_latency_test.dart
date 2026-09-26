@@ -151,13 +151,15 @@ void main() {
     () async {
       final pending = Completer<http.Response>();
       var requests = 0;
+      final methods = <String>[];
       final service = GoogleAppsScriptAttendanceService(
         endpoint: Uri.parse('https://example.com/exec'),
         teacherKey: 'test',
         teacherId: 'test',
         requestTimeout: const Duration(milliseconds: 5),
-        client: MockClient((_) {
+        client: MockClient((request) {
           requests++;
+          methods.add(request.method);
           return pending.future;
         }),
       );
@@ -171,12 +173,13 @@ void main() {
           ),
         ),
       );
-      expect(requests, 1);
+      expect(requests, 2);
+      expect(methods, ['POST', 'GET']);
       pending.complete(
         http.Response('{"ok":false,"error":{"code":"not_found"}}', 200),
       );
       await Future<void>.delayed(Duration.zero);
-      expect(requests, 1);
+      expect(requests, 2);
     },
   );
 }

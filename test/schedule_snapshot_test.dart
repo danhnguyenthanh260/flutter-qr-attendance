@@ -34,17 +34,30 @@ void main() {
           jsonEncode({
             'ok': true,
             'data': {
-              'c1': {
-                'slots': [
-                  {
-                    'slot_number': 1,
-                    'time_range': '07:00 - 08:00',
-                    'date': '2026-09-26',
-                  },
-                ],
-                'roster': <dynamic>[],
-                'sessions': <dynamic>[],
-                'attendance': <dynamic>[],
+              'classes': [
+                {
+                  'id': 'c1',
+                  'name': 'Test class',
+                  'course_code': 'T',
+                  'room': 'A',
+                  'total_students': 1,
+                  'schedule_description': '',
+                },
+              ],
+              'active_session': null,
+              'overview': {
+                'c1': {
+                  'slots': [
+                    {
+                      'slot_number': 1,
+                      'time_range': '07:00 - 08:00',
+                      'date': '2026-09-26',
+                    },
+                  ],
+                  'roster': <dynamic>[],
+                  'sessions': <dynamic>[],
+                  'attendance': <dynamic>[],
+                },
               },
             },
           }),
@@ -52,25 +65,25 @@ void main() {
         ),
       ),
     );
-    await service.getWeeklyOverview();
+    await service.refreshWorkspace();
     final cached = await service.readScheduleSnapshot();
     expect(cached!.data['c1']!.slots.single.date, '2026-09-26');
     expect(cached.data['c1']!.sessions, isEmpty);
     final stored = await storage.read(
-      'weekly_slots',
+      'workspace_schedule_v2',
       now.add(const Duration(hours: 1)),
       maxAge: const Duration(days: 7),
     );
-    expect(stored!.items.single.keys, unorderedEquals(['class_id', 'slots']));
+    expect(stored!.items.single.keys, unorderedEquals(['class', 'slots']));
     expect(
       await storage.read(
-        'weekly_slots',
+        'workspace_schedule_v2',
         now.add(const Duration(days: 8)),
         maxAge: const Duration(days: 7),
       ),
       isNull,
     );
     final isolated = CatalogStorage(directory: dir, scope: 'other-account');
-    expect(await isolated.read('weekly_slots', now), isNull);
+    expect(await isolated.read('workspace_schedule_v2', now), isNull);
   });
 }

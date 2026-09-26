@@ -17,6 +17,99 @@ GoogleAppsScriptAttendanceService createService(http.Client client) {
 }
 
 void main() {
+  for (final matching in [true, false]) {
+    test(
+      'lost start response reconciles matching lesson only: $matching',
+      () async {
+        var posts = 0;
+        final service = createService(
+          MockClient((request) async {
+            if (request.method == 'POST') {
+              posts++;
+              return http.Response('<html>lost response</html>', 200);
+            }
+            expect(request.url.queryParameters['action'], 'active_session');
+            return http.Response(
+              jsonEncode({
+                'ok': true,
+                'data': {
+                  'id': 'recovered',
+                  'class_id': matching ? 'CLASS_1' : 'OTHER',
+                  'class_name': 'Class',
+                  'status': 'active',
+                  'opened_at': '2026-09-19T08:00:00Z',
+                  'slot': {
+                    'date': '2026-09-19',
+                    'slot_number': 2,
+                    'time_range': '09:15 - 10:45',
+                  },
+                },
+              }),
+              200,
+            );
+          }),
+        );
+        final result = service.startSession(
+          classId: 'CLASS_1',
+          slot: const SessionSlot(
+            slotNumber: 2,
+            timeRange: '09:15 - 10:45',
+            date: '2026-09-19',
+          ),
+        );
+        if (matching) {
+          expect((await result).id, 'recovered');
+        } else {
+          await expectLater(
+            result,
+            throwsA(
+              isA<TeacherApiException>().having(
+                (e) => e.code,
+                'code',
+                'operation_unconfirmed',
+              ),
+            ),
+          );
+        }
+        expect(posts, 1);
+      },
+    );
+  }
+  test('lost QR response reads exact receipt without replaying POST', () async {
+    var posts = 0;
+    String? requestId;
+    final service = createService(
+      MockClient((request) async {
+        if (request.method == 'POST') {
+          posts++;
+          requestId = (jsonDecode(request.body) as Map)['request_id'] as String;
+          return http.Response('<html>lost response</html>', 200);
+        }
+        expect(request.url.queryParameters['action'], 'qr_receipt');
+        expect(request.url.queryParameters['request_id'], requestId);
+        final now = DateTime.now().toUtc();
+        return http.Response(
+          jsonEncode({
+            'ok': true,
+            'data': {
+              'ticket_code': 'receipt',
+              'form_url': 'https://docs.google.com/forms/test',
+              'generation': 1,
+              'valid_seconds': 30,
+              'created_at': now.toIso8601String(),
+              'expires_at': now
+                  .add(const Duration(seconds: 30))
+                  .toIso8601String(),
+              'server_time': now.toIso8601String(),
+            },
+          }),
+          200,
+        );
+      }),
+    );
+    expect((await service.getNextQrTicket('SES_1')).ticketCode, 'receipt');
+    expect(posts, 1);
+  });
   test('maps classes and sends the configured teacher key on reads', () async {
     final client = MockClient((request) async {
       expect(request.method, 'GET');
@@ -532,5 +625,27 @@ void main() {
       ),
     );
     expect(calls, 2);
+  });
+
+  test('missing one-time content is retried as read, not reused', () async {
+    var executions = 0;
+    final client = MockClient((request) async {
+      if (request.url.host == 'script.google.com') {
+        executions++;
+        if (executions == 2) {
+          return http.Response('{"ok":true,"data":[]}', 200);
+        }
+        return http.Response(
+          '',
+          302,
+          headers: {
+            'location': 'https://script.googleusercontent.com/macros/echo',
+          },
+        );
+      }
+      return http.Response('<html>not found</html>', 404);
+    });
+    expect(await createService(client).listSessions(), isEmpty);
+    expect(executions, 2);
   });
 }

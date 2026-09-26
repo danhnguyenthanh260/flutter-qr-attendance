@@ -91,7 +91,58 @@ AttendanceService createConfiguredTeacherAttendanceService() {
 /// explicitly supplies a deployed endpoint and an authenticated teacher identity.
 /// QR ticket issuance remains owned by issue #7 and deliberately fails closed here.
 class GoogleAppsScriptAttendanceService
-    implements AttendanceService, TeachingRepository, ScheduleSnapshotSource {
+    implements
+        AttendanceService,
+        TeachingRepository,
+        TeachingWorkspaceRepository,
+        ScheduleSnapshotSource {
+  Future<TeachingWorkspace>? _workspaceRead;
+  @override
+  Future<TeachingWorkspace> refreshWorkspace() => _workspaceRead ??=
+      _fetchWorkspace().whenComplete(() => _workspaceRead = null);
+
+  Future<TeachingWorkspace> _fetchWorkspace() async {
+    final data = _asMap(await _get('workspace'), 'workspace');
+    final classes = _asList(
+      data['classes'],
+      'classes',
+    ).map((row) => ClassModel.fromJson(_asMap(row, 'class'))).toList();
+    final overview = _asMap(data['overview'], 'overview').map(
+      (key, value) =>
+          MapEntry(key, TeachingOverview.fromJson(_asMap(value, 'overview'))),
+    );
+    if (classes.any((c) => !overview.containsKey(c.id)) ||
+        overview.length != classes.length) {
+      throw const TeacherApiException(
+        code: 'invalid_workspace',
+        message: 'Dữ liệu lớp và lịch không đồng bộ.',
+      );
+    }
+    final active = data['active_session'] == null
+        ? null
+        : AttendanceSession.fromJson(
+            _asMap(data['active_session'], 'active_session'),
+          );
+    final snapshot = [
+      for (final c in classes)
+        {
+          'class': c.toJson(),
+          'slots': overview[c.id]!.slots.map((s) => s.toJson()).toList(),
+        },
+    ];
+    await catalogStorage?.write('workspace_schedule_v2', snapshot, _clock());
+    await catalogStorage?.write(
+      'classes',
+      classes.map((c) => c.toJson()).toList(),
+      _clock(),
+    );
+    return TeachingWorkspace(
+      classes: classes,
+      overview: overview,
+      activeSession: active,
+    );
+  }
+
   @override
   Future<Map<String, TeachingOverview>> getWeeklyOverview() async {
     final data = _asMap(await _get('weekly_overview'), 'weekly_overview');
@@ -126,33 +177,36 @@ class GoogleAppsScriptAttendanceService
   >
   readScheduleSnapshot() async {
     final snapshot = await catalogStorage?.read(
-      'weekly_slots',
+      'workspace_schedule_v2',
       _clock(),
       maxAge: const Duration(days: 7),
     );
-    final classes = await catalogStorage?.read(
-      'classes',
-      _clock(),
-      maxAge: const Duration(days: 7),
-    );
-    if (snapshot == null || classes == null) return null;
+    if (snapshot == null) return null;
     try {
+      final classes = snapshot.items
+          .map(
+            (row) => ClassModel.fromJson(
+              Map<String, dynamic>.from(row['class'] as Map),
+            ),
+          )
+          .toList();
       return (
         saved: snapshot.saved,
-        classes: classes.items
-            .map(
-              (row) =>
-                  ClassModel.fromJson(Map<String, dynamic>.from(row as Map)),
-            )
-            .toList(),
+        classes: classes,
         data: {
           for (final row in snapshot.items)
-            row['class_id'] as String: TeachingOverview.fromJson({
-              'slots': row['slots'],
-              'roster': <dynamic>[],
-              'sessions': <dynamic>[],
-              'attendance': <dynamic>[],
-            }),
+            row['class']['id'] as String: TeachingOverview(
+              slots: (row['slots'] as List)
+                  .map(
+                    (s) => SessionSlot.fromJson(
+                      Map<String, dynamic>.from(s as Map),
+                    ),
+                  )
+                  .toList(),
+              roster: const [],
+              sessions: const [],
+              attendance: const [],
+            ),
         },
       );
     } catch (_) {
@@ -254,7 +308,23 @@ class GoogleAppsScriptAttendanceService
       });
       _pendingStartRequestIds.remove(operationKey);
       return AttendanceSession.fromJson(_asMap(data, 'start_session response'));
-    } on TeacherApiException {
+    } on TeacherApiException catch (error) {
+      if (error.code == 'operation_unconfirmed') {
+        // Observe server state once; never replay the write after a lost response.
+        try {
+          final active = await getActiveSession();
+          if (active != null &&
+              active.status == SessionStatus.active &&
+              active.classId == classId &&
+              active.slot.date == slot.date &&
+              active.slot.slotNumber == slot.slotNumber) {
+            _pendingStartRequestIds.remove(operationKey);
+            return active;
+          }
+        } on Exception {
+          // Preserve the original uncertain outcome when reconciliation fails.
+        }
+      }
       rethrow;
     }
   }
@@ -285,10 +355,27 @@ class GoogleAppsScriptAttendanceService
       ).join();
     });
     // Retain the same id on an unknown outcome. The server replays one ticket.
-    final data = await _post('issue_qr', {
-      'session_id': sessionId,
-      'request_id': requestId,
-    });
+    dynamic data;
+    try {
+      data = await _post('issue_qr', {
+        'session_id': sessionId,
+        'request_id': requestId,
+      });
+    } on TeacherApiException catch (error) {
+      if (error.code != 'operation_unconfirmed') rethrow;
+      // Receipt server_time is sampled after the original write. Measure only
+      // this read's transit rather than subtracting the failed POST again.
+      elapsed.reset();
+      try {
+        data = await _get(
+          'qr_receipt',
+          query: {'session_id': sessionId, 'request_id': requestId},
+        );
+      } on Exception {
+        throw error;
+      }
+      if (data == null) rethrow;
+    }
     final ticket = QrTicketModel.fromJson(
       _asMap(data, 'issue_qr response'),
       transit: elapsed.elapsed,
@@ -402,7 +489,13 @@ class GoogleAppsScriptAttendanceService
         }
         return response;
       } on TeacherApiException catch (error) {
-        if (attempt != 0 || error.code != 'redirect_to_execution') rethrow;
+        if (attempt != 0 ||
+            !{
+              'redirect_to_execution',
+              'content_unavailable',
+            }.contains(error.code)) {
+          rethrow;
+        }
         PerformanceLog.mark('api_retry', {
           'request_id': Zone.current[#requestId],
           'code': error.code,
@@ -497,11 +590,18 @@ class GoogleAppsScriptAttendanceService
       });
     final initialResponse = await _sendObserved(request);
     try {
-      final response = await _followAppsScriptRedirect(initialResponse);
+      final response = await _followAppsScriptRedirect(initialResponse)
+          .timeout(const Duration(seconds: 10));
       return _decodeEnvelope(response, action);
+    } on TimeoutException {
+      throw const TeacherApiException(
+        code: 'operation_unconfirmed',
+        message: 'Chưa nhận được kết quả. Đang đối soát trạng thái máy chủ.',
+      );
     } on TeacherApiException catch (error) {
       if (error.code.startsWith('redirect_') ||
-          error.code == 'invalid_response') {
+          error.code == 'invalid_response' ||
+          error.code == 'content_unavailable') {
         throw TeacherApiException(
           code: 'operation_unconfirmed',
           message: 'Chưa nhận được xác nhận từ máy chủ. Kiểm tra trạng thái phiên trước khi thử lại.',
@@ -590,6 +690,12 @@ class GoogleAppsScriptAttendanceService
           }
           uri = target;
           break;
+        }
+        if (response.statusCode == 404 || response.statusCode == 410) {
+          throw const TeacherApiException(
+            code: 'content_unavailable',
+            message: 'Google không trả được nội dung API. Hãy thử tải lại.',
+          );
         }
         if (_hasJsonBody(response) ||
             response.statusCode != 200 ||

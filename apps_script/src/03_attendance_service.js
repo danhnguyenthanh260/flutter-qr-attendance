@@ -17,6 +17,13 @@ var AttendanceDataService = (function (Repository) {
     return this._mutate(function () { return this._repository.importRoster(input); });
   };
 
+  Service.prototype.getWorkspace = function () {
+    return this._settleAndRead(function () {
+      return {classes: this._repository.listClasses(), overview: this._repository.getWeeklyOverview(),
+        active_session: this._repository.getActiveSession()};
+    });
+  };
+
   Service.prototype.getWeeklyOverview = function () {
     return this._settleAndRead(function () { return this._repository.getWeeklyOverview(); });
   };
@@ -86,6 +93,10 @@ var AttendanceDataService = (function (Repository) {
     return this._mutate(function () {
       return this._repository.saveTicketState(input);
     });
+  };
+
+  Service.prototype.getQrReceipt = function (sessionId, requestId) {
+    return this._mutate(function () { return this._repository.getQrReceipt(sessionId, requestId); });
   };
 
   Service.prototype.issueQrTicket = function (input) {

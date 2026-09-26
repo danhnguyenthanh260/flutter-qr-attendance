@@ -8,6 +8,15 @@ var StudentAttendanceService = (function (Domain) {
       request_id: requestId,
       direct_form: config.directForm === true,
     });
+    return ticketResponse(ticket, config, formGateway);
+  }
+
+  function getQrReceipt(service, config, sessionId, requestId, formGateway) {
+    var ticket = service.getQrReceipt(sessionId, requestId);
+    return ticket ? ticketResponse(ticket, config, formGateway) : null;
+  }
+
+  function ticketResponse(ticket, config, formGateway) {
     return {
       ticket_code: ticket.ticket_id,
       form_url: ticket.submission_token
@@ -67,6 +76,7 @@ var StudentAttendanceService = (function (Domain) {
 
   return {
     issueQrTicket: issueQrTicket,
+    getQrReceipt: getQrReceipt,
     claimQrTicket: claimQrTicket,
     processFormSubmission: processFormSubmission,
     buildClaimUrl: buildClaimUrl,
