@@ -141,8 +141,8 @@ class GeminiRestService implements AttendanceAiService {
   static const List<String> _candidateModels = [
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
+    'gemini-3.5-flash',
     'gemini-flash-latest',
-    'gemini-1.5-flash',
   ];
 
   GeminiRestService({http.Client? client, GeminiKeyRotator? rotator})
@@ -242,9 +242,9 @@ class GeminiRestService implements AttendanceAiService {
               }
             }
             return 'Không thể phân tích phản hồi từ Gemini API.';
-          } else if (response.statusCode == 404) {
-            // Model này không tìm thấy trên endpoint này -> tự động thử model tiếp theo trong candidateModels
-            lastError = 'Mô hình $model không tìm thấy (404).';
+          } else if (response.statusCode == 404 || response.statusCode == 503) {
+            // Model này không tìm thấy (404) hoặc đang quá tải tạm thời (503 High Demand) -> tự động chuyển sang model kế tiếp
+            lastError = 'Mô hình $model ${response.statusCode == 503 ? "đang quá tải tạm thời (503)" : "không tìm thấy (404)"}.';
             continue;
           } else if (response.statusCode == 429) {
             // Quota / Rate limit error -> tự động chuyển sang key kế tiếp
