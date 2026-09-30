@@ -183,6 +183,19 @@ class AttendancePromptBuilder {
   }
 }
 
+/// Result of pinging and validating a Gemini API key.
+class KeyTestResult {
+  final bool isValid;
+  final int? statusCode;
+  final String message;
+
+  const KeyTestResult({
+    required this.isValid,
+    this.statusCode,
+    required this.message,
+  });
+}
+
 class GeminiRestService implements AttendanceAiService {
   final http.Client _client;
   final GeminiKeyRotator _rotator;
@@ -204,6 +217,67 @@ class GeminiRestService implements AttendanceAiService {
 
   GeminiKeyRotator get rotator => _rotator;
   AiUsageTracker get usageTracker => _usageTracker;
+
+  /// Validate a Gemini API key by making a lightweight metadata request (0 token cost).
+  static Future<KeyTestResult> testApiKey(
+    String apiKey, {
+    http.Client? client,
+  }) async {
+    final trimmed = apiKey.trim();
+    if (trimmed.isEmpty) {
+      return const KeyTestResult(
+        isValid: false,
+        message: 'API Key không được để trống.',
+      );
+    }
+
+    final httpClient = client ?? http.Client();
+    final uri = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash?key=$trimmed',
+    );
+
+    try {
+      final response = await httpClient.get(
+        uri,
+        headers: {'x-goog-api-key': trimmed},
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        return const KeyTestResult(
+          isValid: true,
+          statusCode: 200,
+          message: 'API Key hợp lệ và sẵn sàng hoạt động (Gemini 2.5 Flash - OK)!',
+        );
+      } else if (response.statusCode == 429) {
+        return const KeyTestResult(
+          isValid: false,
+          statusCode: 429,
+          message: 'Key bị chạm giới hạn tần suất (Rate Limit 429) hoặc tạm hết Quota.',
+        );
+      } else if (response.statusCode == 400 || response.statusCode == 403) {
+        return KeyTestResult(
+          isValid: false,
+          statusCode: response.statusCode,
+          message: 'Key không hợp lệ hoặc bị từ chối truy cập (HTTP ${response.statusCode}).',
+        );
+      } else {
+        return KeyTestResult(
+          isValid: false,
+          statusCode: response.statusCode,
+          message: 'Máy chủ phản hồi mã HTTP ${response.statusCode}.',
+        );
+      }
+    } catch (e) {
+      return KeyTestResult(
+        isValid: false,
+        message: 'Không thể kết nối tới Google API: $e',
+      );
+    } finally {
+      if (client == null) {
+        httpClient.close();
+      }
+    }
+  }
 
   @override
   Future<String> askAi({

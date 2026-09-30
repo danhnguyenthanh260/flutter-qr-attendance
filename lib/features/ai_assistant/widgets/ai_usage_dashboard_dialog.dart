@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -6,12 +8,14 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
 import '../../../data/models/ai_usage_record.dart';
+import '../../../data/services/ai_usage_tracker.dart';
 import '../../../data/services/gemini_key_rotator.dart';
 import '../ai_assistant_provider.dart';
 import 'ai_settings_dialog.dart';
 
 /// Modal dialog providing comprehensive metrics on AI usage, token consumption,
-/// estimated costs (USD/VND), and Gemini API Key pool health diagnostics.
+/// estimated costs (USD/VND), Gemini API Key pool health diagnostics,
+/// date range filtering, spending budget cap, and visual usage trend charts.
 class AiUsageDashboardDialog extends StatefulWidget {
   const AiUsageDashboardDialog({super.key});
 
@@ -31,6 +35,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
   String _searchQuery = '';
   String _selectedFilter = 'all'; // 'all', 'chat', 'report'
   String _statusFilter = 'all'; // 'all', 'success', 'failure'
+  String _selectedDateRange = 'all'; // 'all', 'today', '7days', 'this_month'
   String _sortBy = 'newest'; // 'newest', 'oldest', 'tokens_desc', 'latency_desc', 'cost_desc'
   int _displayLimit = 20;
   final Set<String> _expandedRecordIds = {};
@@ -92,17 +97,106 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     }
   }
 
-  void _handleCopySummary(AiUsageSummary summary) {
+  Future<void> _handleSetBudgetCap(AiUsageTracker tracker) async {
+    final controller = TextEditingController(
+      text: tracker.budgetCapUsd.toStringAsFixed(2),
+    );
+
+    final newCap = await showDialog<double>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.savings_outlined, color: AppColors.primary, size: 22),
+            SizedBox(width: 10),
+            Text('Cài đặt Hạn mức Ngân sách', style: AppTypography.heading2),
+          ],
+        ),
+        content: SizedBox(
+          width: 380,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Đặt giới hạn ngân sách chi phí AI ước tính (\$ USD). Khi chi phí chạm 80% hoặc 100%, hệ thống sẽ hiển thị cảnh báo trực quan.',
+                style: AppTypography.bodyRegular,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Hạn mức chi phí (\$ USD)',
+                  prefixText: '\$ ',
+                  border: OutlineInputBorder(),
+                  helperText: 'Ví dụ: 0.50, 1.00, 2.50, 5.00...',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [0.50, 1.00, 2.00, 5.00].map((val) {
+                  return ActionChip(
+                    label: Text('\$${val.toStringAsFixed(2)}'),
+                    onPressed: () {
+                      controller.text = val.toStringAsFixed(2);
+                    },
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () {
+              final parsed = double.tryParse(controller.text.trim());
+              if (parsed != null && parsed > 0) {
+                Navigator.of(dialogCtx).pop(parsed);
+              }
+            },
+            child: const Text('Lưu hạn mức'),
+          ),
+        ],
+      ),
+    );
+
+    if (newCap != null && mounted) {
+      await tracker.setBudgetCap(newCap);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Đã cập nhật hạn mức ngân sách: \$${newCap.toStringAsFixed(2)}'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _handleCopySummary(AiUsageSummary summary, AiUsageTracker tracker) {
     final buffer = StringBuffer();
     buffer.writeln('=== BÁO CÁO GIÁM SÁT MỨC SỬ DỤNG AI & CHI PHÍ ===');
     buffer.writeln('Mô hình: Google Gemini 2.5 Flash');
+    buffer.writeln('Mốc thời gian: ${_getDateRangeLabel(_selectedDateRange)}');
     buffer.writeln('Tổng số yêu cầu: ${summary.totalRequests} lượt (${summary.successRatePercent.toStringAsFixed(1)}% thành công)');
     buffer.writeln('- Thành công: ${summary.successfulRequests}');
     buffer.writeln('- Lỗi/Thất bại: ${summary.failedRequests}');
     buffer.writeln('Tổng lượng Tokens: ${NumberFormat('#,###').format(summary.totalTokens)}');
     buffer.writeln('- Prompt (Input): ${NumberFormat('#,###').format(summary.totalPromptTokens)}');
     buffer.writeln('- Candidate (Output): ${NumberFormat('#,###').format(summary.totalCandidatesTokens)}');
-    buffer.writeln('Chi phí ước tính: ${summary.formattedCostUsd} (~${summary.formattedCostVnd})');
+    buffer.writeln('Chi phí ước tính: ${summary.formattedCostUsd} (~${summary.formattedCostVnd}) / Hạn mức: \$${tracker.budgetCapUsd.toStringAsFixed(2)}');
     buffer.writeln('Độ trễ trung bình: ${(summary.averageLatencyMs / 1000.0).toStringAsFixed(2)}s (${summary.averageLatencyMs.round()} ms/lượt)');
     buffer.writeln('Thời gian xuất: ${DateFormat('HH:mm:ss dd/MM/yyyy').format(DateTime.now())}');
 
@@ -116,6 +210,38 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     );
   }
 
+  String _getDateRangeLabel(String range) {
+    switch (range) {
+      case 'today':
+        return 'Hôm nay';
+      case '7days':
+        return '7 ngày qua';
+      case 'this_month':
+        return 'Tháng này';
+      case 'all':
+      default:
+        return 'Toàn bộ';
+    }
+  }
+
+  List<AiUsageRecord> _filterByDateRange(List<AiUsageRecord> records) {
+    final now = DateTime.now();
+    switch (_selectedDateRange) {
+      case 'today':
+        final startOfToday = DateTime(now.year, now.month, now.day);
+        return records.where((r) => r.timestamp.isAfter(startOfToday) || r.timestamp.isAtSameMomentAs(startOfToday)).toList();
+      case '7days':
+        final sevenDaysAgo = now.subtract(const Duration(days: 7));
+        return records.where((r) => r.timestamp.isAfter(sevenDaysAgo)).toList();
+      case 'this_month':
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        return records.where((r) => r.timestamp.isAfter(startOfMonth)).toList();
+      case 'all':
+      default:
+        return records;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AiAssistantProvider>();
@@ -125,15 +251,20 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
       listenable: tracker,
       builder: (context, _) {
         final rotator = provider.rotator;
-        final summary = tracker.getSummary();
+        final allRecords = tracker.records;
+        final dateFilteredRecords = _filterByDateRange(allRecords);
+        final summary = AiUsageSummary.fromRecords(dateFilteredRecords);
         final keyStatuses = rotator.getKeyStatuses();
+
+        final isBudgetWarning = tracker.budgetCapUsd > 0 && summary.totalCostUsd >= (tracker.budgetCapUsd * 0.8);
+        final isBudgetExceeded = tracker.budgetCapUsd > 0 && summary.totalCostUsd >= tracker.budgetCapUsd;
 
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           backgroundColor: Colors.white,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960, maxHeight: 780),
+            constraints: const BoxConstraints(maxWidth: 980, maxHeight: 820),
             child: Column(
               children: [
                 // 1. Header Toolbar
@@ -149,23 +280,39 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // A. 4 Key Summary Metric Cards
-                        _buildSummaryCards(summary),
+                        // Budget Alert Banner (if approaching or exceeded)
+                        if (isBudgetWarning || isBudgetExceeded) ...[
+                          _buildBudgetAlertBanner(summary, tracker, isBudgetExceeded),
+                          const SizedBox(height: 14),
+                        ],
+
+                        // Date Range Filter & Budget Setting Row
+                        _buildDateRangeAndBudgetBar(tracker),
+                        const SizedBox(height: 14),
+
+                        // A. 4 Symmetrical Summary Metric Cards (Pixel-perfect equal heights)
+                        _buildSummaryCards(summary, tracker),
                         const SizedBox(height: 20),
 
-                        // B. Key Pool Diagnostics Section
+                        // B. Visual Usage Trend & Task Distribution Charts
+                        if (allRecords.isNotEmpty) ...[
+                          _buildVisualChartsSection(dateFilteredRecords),
+                          const SizedBox(height: 20),
+                        ],
+
+                        // C. Key Pool Diagnostics Section
                         _buildKeyPoolSection(rotator, keyStatuses),
                         const SizedBox(height: 20),
 
-                        // C. Recent Invocations Log Table with Search, Filter & Sort
-                        _buildRecentInvocationsSection(summary),
+                        // D. Recent Invocations Log Table with Search, Filter & Sort
+                        _buildRecentInvocationsSection(dateFilteredRecords),
                       ],
                     ),
                   ),
                 ),
 
                 // 3. Footer Actions
-                _buildFooter(context, provider, summary),
+                _buildFooter(context, provider, summary, tracker),
               ],
             ),
           ),
@@ -176,7 +323,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
 
   Widget _buildHeader(BuildContext context, AiAssistantProvider provider) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
@@ -221,21 +368,152 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     );
   }
 
-  Widget _buildSummaryCards(AiUsageSummary summary) {
+  Widget _buildBudgetAlertBanner(
+    AiUsageSummary summary,
+    AiUsageTracker tracker,
+    bool isExceeded,
+  ) {
+    final bgColor = isExceeded ? const Color(0xFFFEF2F2) : const Color(0xFFFFFBEB);
+    final borderColor = isExceeded ? const Color(0xFFFECACA) : const Color(0xFFFDE68A);
+    final textColor = isExceeded ? AppColors.error : const Color(0xFF92400E);
+    final iconColor = isExceeded ? AppColors.error : const Color(0xFFD97706);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isExceeded ? Icons.warning_rounded : Icons.info_outline,
+            color: iconColor,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isExceeded
+                  ? '⚠️ CẢNH BÁO: Chi phí sử dụng (${summary.formattedCostUsd}) đã chạm/vượt hạn mức ngân sách (\$${tracker.budgetCapUsd.toStringAsFixed(2)})!'
+                  : '⚠️ Chú ý: Chi phí đã tiêu thụ đạt ${(summary.totalCostUsd / tracker.budgetCapUsd * 100).toStringAsFixed(1)}% hạn mức (\$${tracker.budgetCapUsd.toStringAsFixed(2)}).',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              visualDensity: VisualDensity.compact,
+            ),
+            onPressed: () => _handleSetBudgetCap(tracker),
+            child: Text(
+              'Điều chỉnh hạn mức',
+              style: TextStyle(fontSize: 12, color: textColor, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateRangeAndBudgetBar(AiUsageTracker tracker) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
+          children: [
+            const Icon(Icons.date_range_rounded, size: 16, color: AppColors.primary),
+            const SizedBox(width: 2),
+            const Text(
+              'Thời gian:',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+            ),
+            const SizedBox(width: 4),
+            _buildDateChip('all', 'Toàn bộ'),
+            _buildDateChip('today', 'Hôm nay'),
+            _buildDateChip('7days', '7 ngày qua'),
+            _buildDateChip('this_month', 'Tháng này'),
+          ],
+        ),
+        // Budget cap action chip
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            visualDensity: VisualDensity.compact,
+            side: const BorderSide(color: AppColors.border),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
+          onPressed: () => _handleSetBudgetCap(tracker),
+          icon: const Icon(Icons.shield_outlined, size: 14, color: AppColors.primary),
+          label: Text(
+            'Hạn mức: \$${tracker.budgetCapUsd.toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateChip(String key, String label) {
+    final isSelected = _selectedDateRange == key;
+    return InkWell(
+      onTap: () => setState(() => _selectedDateRange = key),
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCards(AiUsageSummary summary, AiUsageTracker tracker) {
     final hasData = summary.totalRequests > 0;
     final tokenFormatted = NumberFormat('#,###').format(summary.totalTokens);
     final latencySec = (summary.averageLatencyMs / 1000.0).toStringAsFixed(2);
     final successRate = summary.successRatePercent;
 
+    // Symmetrical ratios for the 4 bottom indicator bars
+    final promptRatio = summary.totalTokens > 0
+        ? (summary.totalPromptTokens / summary.totalTokens).clamp(0.0, 1.0)
+        : 0.5;
+
+    final budgetRatio = tracker.budgetCapUsd > 0
+        ? (summary.totalCostUsd / tracker.budgetCapUsd).clamp(0.0, 1.0)
+        : 0.0;
+
+    final latencyRatio = (summary.averageLatencyMs / 4000.0).clamp(0.05, 1.0);
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final cardWidth = (constraints.maxWidth - (3 * 14)) / 4;
+        final isNarrow = constraints.maxWidth < 800;
+        final cardWidth = isNarrow
+            ? (constraints.maxWidth - 14) / 2
+            : (constraints.maxWidth - (3 * 14)) / 4;
+
         return Wrap(
           spacing: 14,
           runSpacing: 14,
           children: [
-            // Card 1: Total Requests
-            _buildMetricCard(
+            // Card 1: Total Requests (Success rate indicator bar)
+            _buildSymmetricalMetricCard(
               width: cardWidth,
               title: 'Tổng số yêu cầu',
               value: hasData ? '${summary.totalRequests}' : '0',
@@ -245,11 +523,13 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
               icon: Icons.sync_alt_rounded,
               iconColor: AppColors.primary,
               iconBg: const Color(0xFFEFF6FF),
-              progressValue: hasData ? (summary.successfulRequests / summary.totalRequests) : null,
+              progressValue: hasData ? (summary.successfulRequests / summary.totalRequests) : 0.0,
+              progressActiveColor: AppColors.success,
+              progressBgColor: AppColors.error.withValues(alpha: 0.2),
             ),
 
-            // Card 2: Token Usage
-            _buildMetricCard(
+            // Card 2: Token Usage (Prompt vs Candidate ratio indicator bar)
+            _buildSymmetricalMetricCard(
               width: cardWidth,
               title: 'Lượng Token',
               value: hasData ? tokenFormatted : '0',
@@ -259,23 +539,31 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
               icon: Icons.toll_outlined,
               iconColor: const Color(0xFFD97706),
               iconBg: const Color(0xFFFEF3C7),
+              progressValue: promptRatio,
+              progressActiveColor: const Color(0xFF3B82F6),
+              progressBgColor: const Color(0xFFF59E0B),
             ),
 
-            // Card 3: Estimated Cost
-            _buildMetricCard(
+            // Card 3: Estimated Cost (Budget cap progress indicator bar)
+            _buildSymmetricalMetricCard(
               width: cardWidth,
               title: 'Chi phí ước tính',
               value: hasData ? summary.formattedCostUsd : '\$0.0000',
               subtitle: hasData
-                  ? '~${summary.formattedCostVnd} (quy đổi)'
+                  ? '~${summary.formattedCostVnd} (${(budgetRatio * 100).toStringAsFixed(1)}% hạn mức)'
                   : '~0 ₫ (Gemini 2.5)',
               icon: Icons.attach_money_rounded,
               iconColor: AppColors.success,
               iconBg: const Color(0xFFDCFCE7),
+              progressValue: budgetRatio,
+              progressActiveColor: budgetRatio >= 1.0
+                  ? AppColors.error
+                  : (budgetRatio >= 0.8 ? const Color(0xFFF59E0B) : AppColors.success),
+              progressBgColor: const Color(0xFFE2E8F0),
             ),
 
-            // Card 4: Average Latency
-            _buildMetricCard(
+            // Card 4: Average Latency (Speed indicator bar)
+            _buildSymmetricalMetricCard(
               width: cardWidth,
               title: 'Độ trễ trung bình',
               value: hasData ? '${latencySec}s' : '0.00s',
@@ -285,6 +573,11 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
               icon: Icons.timer_outlined,
               iconColor: const Color(0xFF7C3AED),
               iconBg: const Color(0xFFF3E8FF),
+              progressValue: latencyRatio,
+              progressActiveColor: summary.averageLatencyMs < 2000
+                  ? const Color(0xFF10B981)
+                  : (summary.averageLatencyMs < 4000 ? const Color(0xFFF59E0B) : AppColors.error),
+              progressBgColor: const Color(0xFFE2E8F0),
             ),
           ],
         );
@@ -292,7 +585,8 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     );
   }
 
-  Widget _buildMetricCard({
+  /// Symmetrical card: Every card has uniform height and consistent 4px indicator slot
+  Widget _buildSymmetricalMetricCard({
     required double width,
     required String title,
     required String value,
@@ -300,10 +594,13 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     required IconData icon,
     required Color iconColor,
     required Color iconBg,
-    double? progressValue,
+    required double progressValue,
+    required Color progressActiveColor,
+    required Color progressBgColor,
   }) {
     return Container(
       width: width,
+      constraints: const BoxConstraints(minHeight: 126),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -312,6 +609,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -338,7 +636,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             value,
             style: const TextStyle(
@@ -354,21 +652,237 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          if (progressValue != null) ...[
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: progressValue,
-                minHeight: 4,
-                backgroundColor: AppColors.error.withValues(alpha: 0.15),
-                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.success),
-              ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: progressValue,
+              minHeight: 4,
+              backgroundColor: progressBgColor,
+              valueColor: AlwaysStoppedAnimation<Color>(progressActiveColor),
             ),
-          ],
+          ),
         ],
       ),
     );
+  }
+
+  /// Visual Usage Trend Charts Section: Daily Token Bars & Task Distribution
+  Widget _buildVisualChartsSection(List<AiUsageRecord> records) {
+    // 1. Group records by day for the last 7 days
+    final now = DateTime.now();
+    final dayList = List.generate(7, (i) {
+      final d = now.subtract(Duration(days: 6 - i));
+      return DateTime(d.year, d.month, d.day);
+    });
+
+    final dayTokensMap = <DateTime, int>{};
+    for (final day in dayList) {
+      dayTokensMap[day] = 0;
+    }
+
+    for (final r in records) {
+      final rDay = DateTime(r.timestamp.year, r.timestamp.month, r.timestamp.day);
+      if (dayTokensMap.containsKey(rDay)) {
+        dayTokensMap[rDay] = (dayTokensMap[rDay] ?? 0) + r.totalTokens;
+      }
+    }
+
+    final maxTokens = dayTokensMap.values.fold<int>(0, max);
+    final safeMax = maxTokens > 0 ? maxTokens : 100;
+
+    // 2. Task distribution
+    final chatCount = records.where((r) => r.operation == 'chat').length;
+    final reportCount = records.where((r) => r.operation == 'report').length;
+    final totalOps = records.length;
+    final chatRatio = totalOps > 0 ? (chatCount / totalOps) : 0.5;
+
+    // 3. Token in vs out
+    final totalPrompt = records.fold<int>(0, (sum, r) => sum + r.promptTokens);
+    final totalOutput = records.fold<int>(0, (sum, r) => sum + r.candidatesTokens);
+    final allTokens = totalPrompt + totalOutput;
+    final inRatio = allTokens > 0 ? (totalPrompt / allTokens) : 0.5;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bar_chart_rounded, size: 18, color: AppColors.primary),
+              SizedBox(width: 8),
+              Text(
+                'Biểu đồ Trực quan hóa Xu hướng & Tỷ lệ Tiêu thụ',
+                style: AppTypography.heading3,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 650;
+              return Flex(
+                direction: isNarrow ? Axis.vertical : Axis.horizontal,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left: 7-day Token Trend Bar Chart
+                  Expanded(
+                    flex: isNarrow ? 0 : 6,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Xu hướng Token 7 ngày gần nhất:',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 100,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: dayList.map((day) {
+                              final tokens = dayTokensMap[day] ?? 0;
+                              final heightFactor = (tokens / safeMax).clamp(0.06, 1.0);
+                              final dayName = _getDayShortName(day.weekday);
+                              final dateStr = DateFormat('dd/MM').format(day);
+
+                              return Tooltip(
+                                message: '$dateStr: ${NumberFormat('#,###').format(tokens)} tokens',
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      tokens > 0 ? (tokens >= 1000 ? '${(tokens / 1000).toStringAsFixed(1)}k' : '$tokens') : '0',
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: tokens > 0 ? const Color(0xFF1E40AF) : AppColors.textMuted,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      width: 22,
+                                      height: 60 * heightFactor,
+                                      decoration: BoxDecoration(
+                                        color: tokens > 0 ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0),
+                                        borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      dayName,
+                                      style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  if (!isNarrow) ...[
+                    const SizedBox(width: 24),
+                    Container(width: 1, height: 110, color: AppColors.border),
+                    const SizedBox(width: 24),
+                  ] else ...[
+                    const SizedBox(height: 16),
+                    const Divider(height: 1, color: AppColors.border),
+                    const SizedBox(height: 16),
+                  ],
+
+                  // Right: Task & Token Distribution Bars
+                  Expanded(
+                    flex: isNarrow ? 0 : 5,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Tỷ lệ Tác vụ & Cấu trúc Token:',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Operation Ratio Bar
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Chat hỏi đáp: $chatCount', style: const TextStyle(fontSize: 11, color: Color(0xFF16A34A), fontWeight: FontWeight.w600)),
+                            Text('Tạo báo cáo: $reportCount', style: const TextStyle(fontSize: 11, color: Color(0xFF2563EB), fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: chatRatio,
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFF2563EB),
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF16A34A)),
+                          ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // Token In vs Out Ratio Bar
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Input Prompt: ${NumberFormat('#,###').format(totalPrompt)}', style: const TextStyle(fontSize: 11, color: Color(0xFF3B82F6), fontWeight: FontWeight.w600)),
+                            Text('Output: ${NumberFormat('#,###').format(totalOutput)}', style: const TextStyle(fontSize: 11, color: Color(0xFFF59E0B), fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: inRatio,
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFFF59E0B),
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF3B82F6)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getDayShortName(int weekday) {
+    switch (weekday) {
+      case 1:
+        return 'T2';
+      case 2:
+        return 'T3';
+      case 3:
+        return 'T4';
+      case 4:
+        return 'T5';
+      case 5:
+        return 'T6';
+      case 6:
+        return 'T7';
+      case 7:
+        return 'CN';
+      default:
+        return '';
+    }
   }
 
   Widget _buildKeyPoolSection(
@@ -584,11 +1098,9 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     );
   }
 
-  Widget _buildRecentInvocationsSection(AiUsageSummary summary) {
-    final allItems = summary.allRecords.isNotEmpty ? summary.allRecords : summary.recentRecords;
-
+  Widget _buildRecentInvocationsSection(List<AiUsageRecord> records) {
     // Filter pipeline
-    final filtered = allItems.where((r) {
+    final filtered = records.where((r) {
       // 1. Operation filter
       if (_selectedFilter == 'chat' && r.operation != 'chat') return false;
       if (_selectedFilter == 'report' && r.operation != 'report') return false;
@@ -637,10 +1149,10 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     final displayedRecords = filtered.take(_displayLimit).toList();
     final hasMore = totalFiltered > _displayLimit;
 
-    final chatCount = allItems.where((r) => r.operation == 'chat').length;
-    final reportCount = allItems.where((r) => r.operation == 'report').length;
-    final successCount = allItems.where((r) => r.isSuccess).length;
-    final failCount = allItems.where((r) => !r.isSuccess).length;
+    final chatCount = records.where((r) => r.operation == 'chat').length;
+    final reportCount = records.where((r) => r.operation == 'report').length;
+    final successCount = records.where((r) => r.isSuccess).length;
+    final failCount = records.where((r) => !r.isSuccess).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -719,7 +1231,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 // Operation Filters
-                _buildFilterChip('all', 'Tất cả (${allItems.length})'),
+                _buildFilterChip('all', 'Tất cả (${records.length})'),
                 _buildFilterChip('chat', 'Chat ($chatCount)'),
                 _buildFilterChip('report', 'Báo cáo ($reportCount)'),
 
@@ -769,7 +1281,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
         const SizedBox(height: 12),
 
         // Record List / Empty States
-        if (allItems.isEmpty)
+        if (records.isEmpty)
           _buildEmptyHistoryState()
         else if (displayedRecords.isEmpty)
           _buildNoMatchingFilterState()
@@ -896,6 +1408,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                 _searchQuery = '';
                 _selectedFilter = 'all';
                 _statusFilter = 'all';
+                _selectedDateRange = 'all';
               });
             },
             child: const Text('Đặt lại bộ lọc', style: TextStyle(fontSize: 12.5)),
@@ -1232,6 +1745,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     BuildContext context,
     AiAssistantProvider provider,
     AiUsageSummary summary,
+    AiUsageTracker tracker,
   ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -1271,7 +1785,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               ),
-              onPressed: () => _handleCopySummary(summary),
+              onPressed: () => _handleCopySummary(summary, tracker),
               icon: const Icon(Icons.copy_rounded, size: 16, color: AppColors.primary),
               label: const Text(
                 'Sao chép tóm tắt',

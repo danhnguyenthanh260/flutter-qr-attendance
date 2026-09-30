@@ -7,6 +7,8 @@ abstract class AiUsageStorage {
   Future<List<AiUsageRecord>> loadRecords();
   Future<void> saveRecords(List<AiUsageRecord> records);
   Future<void> clear();
+  Future<double> loadBudgetCap({double defaultCap = 1.0});
+  Future<void> saveBudgetCap(double cap);
 }
 
 /// Local file storage implementing persistence for AI usage history.
@@ -55,11 +57,32 @@ class LocalFileAiUsageStorage implements AiUsageStorage {
       // Ignore deletion errors
     }
   }
+
+  @override
+  Future<double> loadBudgetCap({double defaultCap = 1.0}) async {
+    try {
+      final capFile = File('$fileName.budget');
+      if (await capFile.exists()) {
+        final text = await capFile.readAsString();
+        return double.tryParse(text.trim()) ?? defaultCap;
+      }
+    } catch (_) {}
+    return defaultCap;
+  }
+
+  @override
+  Future<void> saveBudgetCap(double cap) async {
+    try {
+      final capFile = File('$fileName.budget');
+      await capFile.writeAsString(cap.toString(), flush: true);
+    } catch (_) {}
+  }
 }
 
 /// In-memory storage for unit testing without filesystem dependencies.
 class MemoryAiUsageStorage implements AiUsageStorage {
   List<AiUsageRecord> _items = [];
+  double _budgetCap = 1.0;
 
   @override
   Future<List<AiUsageRecord>> loadRecords() async => List.unmodifiable(_items);
@@ -72,5 +95,13 @@ class MemoryAiUsageStorage implements AiUsageStorage {
   @override
   Future<void> clear() async {
     _items.clear();
+  }
+
+  @override
+  Future<double> loadBudgetCap({double defaultCap = 1.0}) async => _budgetCap;
+
+  @override
+  Future<void> saveBudgetCap(double cap) async {
+    _budgetCap = cap;
   }
 }

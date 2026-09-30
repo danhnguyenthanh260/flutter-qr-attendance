@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_typography.dart';
+import '../../../data/services/gemini_ai_service.dart';
 import '../../../data/services/gemini_key_rotator.dart';
 import '../ai_assistant_provider.dart';
 
@@ -23,11 +24,62 @@ class AiSettingsDialog extends StatefulWidget {
 class _AiSettingsDialogState extends State<AiSettingsDialog> {
   final TextEditingController _inputController = TextEditingController();
   bool _obscure = true;
+  bool _isTesting = false;
+  String? _testingKey;
+  KeyTestResult? _lastTestResult;
 
   @override
   void dispose() {
     _inputController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleTestKey(String key) async {
+    final trimmed = key.trim();
+    if (trimmed.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng nhập API Key trước khi kiểm tra.'),
+          backgroundColor: AppColors.warning,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isTesting = true;
+      _testingKey = trimmed;
+      _lastTestResult = null;
+    });
+
+    final result = await GeminiRestService.testApiKey(trimmed);
+
+    if (!mounted) return;
+    setState(() {
+      _isTesting = false;
+      _lastTestResult = result;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              result.isValid ? Icons.check_circle : Icons.error_outline,
+              color: Colors.white,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(result.message)),
+          ],
+        ),
+        backgroundColor: result.isValid
+            ? AppColors.success
+            : (result.statusCode == 429 ? AppColors.warning : AppColors.error),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   void _handleAddKeys(AiAssistantProvider provider) {
@@ -36,6 +88,9 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
 
     final count = provider.addApiKeysFromText(text);
     _inputController.clear();
+    setState(() {
+      _lastTestResult = null;
+    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -66,7 +121,7 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
         ],
       ),
       content: SizedBox(
-        width: 540,
+        width: 560,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -149,7 +204,7 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  constraints: const BoxConstraints(maxHeight: 160),
+                  constraints: const BoxConstraints(maxHeight: 180),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceVariant,
                     borderRadius: BorderRadius.circular(8),
@@ -161,8 +216,9 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
                     separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (context, index) {
                       final key = keys[index];
+                      final isCurrentlyTesting = _isTesting && _testingKey == key;
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         child: Row(
                           children: [
                             Container(
@@ -191,6 +247,18 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
+                            ),
+                            // Quick ping test button
+                            IconButton(
+                              icon: isCurrentlyTesting
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.bolt_outlined, size: 18, color: AppColors.primary),
+                              tooltip: 'Kiểm tra kết nối key này',
+                              onPressed: isCurrentlyTesting ? null : () => _handleTestKey(key),
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.textMuted),
@@ -234,6 +302,25 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Test key button
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    ),
+                    onPressed: _isTesting ? null : () => _handleTestKey(_inputController.text),
+                    icon: _isTesting && _testingKey == _inputController.text.trim()
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.bolt, size: 18),
+                    label: const Text('Kiểm tra'),
+                  ),
+                  const SizedBox(width: 8),
+                  // Add key button
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
@@ -246,9 +333,49 @@ class _AiSettingsDialogState extends State<AiSettingsDialog> {
                   ),
                 ],
               ),
+
+              // Inline test result banner if tested
+              if (_lastTestResult != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _lastTestResult!.isValid
+                        ? const Color(0xFFECFDF5)
+                        : const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _lastTestResult!.isValid
+                          ? const Color(0xFFA7F3D0)
+                          : const Color(0xFFFECACA),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _lastTestResult!.isValid ? Icons.check_circle_outline : Icons.error_outline,
+                        size: 16,
+                        color: _lastTestResult!.isValid ? const Color(0xFF166534) : AppColors.error,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _lastTestResult!.message,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: _lastTestResult!.isValid ? const Color(0xFF166534) : AppColors.error,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 12),
               const Text(
-                '💡 Mẹo: Bạn có thể thêm 2-3 keys miễn phí từ Google AI Studio (aistudio.google.com). Hệ thống sẽ tự động xoay vòng qua từng key và tự động chuyển key khác nếu chạm giới hạn Rate Limit (15 RPM).',
+                '💡 Mẹo: Bạn có thể lấy keys miễn phí từ Google AI Studio (aistudio.google.com). Bấm "Kiểm tra" để xác thực key còn hoạt động trước khi thêm vào pool.',
                 style: TextStyle(fontSize: 11.5, color: AppColors.textMuted),
               ),
             ],
