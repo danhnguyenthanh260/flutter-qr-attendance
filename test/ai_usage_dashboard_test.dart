@@ -158,7 +158,7 @@ void main() {
     testWidgets(
       'lọc danh sách lượt gọi theo loại thao tác (Tất cả, Chat, Báo cáo)',
       (tester) async {
-        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.physicalSize = const Size(1280, 1400);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -199,6 +199,7 @@ void main() {
         expect(find.text('Tạo Báo cáo'), findsOneWidget);
 
         // Chạm vào filter "Chat (1)"
+        await tester.ensureVisible(find.text('Chat (1)'));
         await tester.tap(find.text('Chat (1)'));
         await tester.pumpAndSettle();
 
@@ -206,6 +207,7 @@ void main() {
         expect(find.text('Tạo Báo cáo'), findsNothing);
 
         // Chạm vào filter "Báo cáo (1)"
+        await tester.ensureVisible(find.text('Báo cáo (1)'));
         await tester.tap(find.text('Báo cáo (1)'));
         await tester.pumpAndSettle();
 
@@ -213,6 +215,7 @@ void main() {
         expect(find.text('Tạo Báo cáo'), findsOneWidget);
 
         // Chạm lại filter "Tất cả (2)"
+        await tester.ensureVisible(find.text('Tất cả (2)'));
         await tester.tap(find.text('Tất cả (2)'));
         await tester.pumpAndSettle();
 
@@ -386,7 +389,7 @@ void main() {
     testWidgets(
       'tìm kiếm theo từ khóa và lọc theo trạng thái thành công / thất bại',
       (tester) async {
-        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.physicalSize = const Size(1280, 1400);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -430,6 +433,7 @@ void main() {
         expect(find.textContaining('Lỗi: Rate limit (429) quota exceeded'), findsOneWidget);
 
         // Lọc chỉ xem lỗi: '✕ Lỗi (1)'
+        await tester.ensureVisible(find.text('✕ Lỗi (1)'));
         await tester.tap(find.text('✕ Lỗi (1)'));
         await tester.pumpAndSettle();
 
@@ -437,19 +441,22 @@ void main() {
         expect(find.textContaining('400 in + 100 out'), findsNothing);
 
         // Lọc chỉ xem thành công: '✓ Thành công (1)'
+        await tester.ensureVisible(find.text('✓ Thành công (1)'));
         await tester.tap(find.text('✓ Thành công (1)'));
         await tester.pumpAndSettle();
 
         expect(find.textContaining('400 in + 100 out'), findsOneWidget);
         expect(find.textContaining('Lỗi: Rate limit'), findsNothing);
 
-        // Quay lại 'Tất cả trạng thái'
+        // Quay lại 'Tất cả'
+        await tester.ensureVisible(find.text('Tất cả'));
         await tester.tap(find.text('Tất cả'));
         await tester.pumpAndSettle();
 
         // Tìm kiếm theo từ khóa '429'
         final searchField = find.byType(TextField);
         expect(searchField, findsOneWidget);
+        await tester.ensureVisible(searchField);
         await tester.enterText(searchField, '429');
         await tester.pumpAndSettle();
 
@@ -457,6 +464,7 @@ void main() {
         expect(find.textContaining('400 in + 100 out'), findsNothing);
 
         // Xóa tìm kiếm bằng nút (x)
+        await tester.ensureVisible(find.byIcon(Icons.clear));
         await tester.tap(find.byIcon(Icons.clear));
         await tester.pumpAndSettle();
 
@@ -467,7 +475,7 @@ void main() {
     testWidgets(
       'chạm vào bản ghi để mở rộng xem chi tiết và kiểm tra nút sao chép tóm tắt',
       (tester) async {
-        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.physicalSize = const Size(1280, 1400);
         tester.view.devicePixelRatio = 1.0;
         addTearDown(() => tester.view.resetPhysicalSize());
 
@@ -497,6 +505,7 @@ void main() {
         expect(find.text('Chi tiết bản ghi tương tác:'), findsNothing);
 
         // Chạm vào dòng bản ghi để mở rộng
+        await tester.ensureVisible(find.text('Tạo Báo cáo'));
         await tester.tap(find.text('Tạo Báo cáo'));
         await tester.pumpAndSettle();
 
@@ -508,6 +517,7 @@ void main() {
         // Kiểm tra nút Sao chép tóm tắt
         final copyBtn = find.text('Sao chép tóm tắt');
         expect(copyBtn, findsOneWidget);
+        await tester.ensureVisible(copyBtn);
         await tester.tap(copyBtn);
         await tester.pumpAndSettle();
 

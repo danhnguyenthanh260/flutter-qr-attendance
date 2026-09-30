@@ -25,6 +25,22 @@ class AiUsageTracker extends ChangeNotifier {
 
   bool get isInitialized => _isInitialized;
   List<AiUsageRecord> get records => List.unmodifiable(_records);
+  double _budgetCapUsd = 1.0;
+
+  double get budgetCapUsd => _budgetCapUsd;
+  bool get isBudgetExceeded => getSummary().totalCostUsd >= _budgetCapUsd;
+  bool get isBudgetWarning =>
+      _budgetCapUsd > 0 && getSummary().totalCostUsd >= (_budgetCapUsd * 0.8);
+  double get budgetUsageRatio =>
+      _budgetCapUsd > 0
+          ? (getSummary().totalCostUsd / _budgetCapUsd).clamp(0.0, 1.0)
+          : 0.0;
+
+  Future<void> setBudgetCap(double cap) async {
+    _budgetCapUsd = cap > 0 ? cap : 1.0;
+    await _storage.saveBudgetCap(_budgetCapUsd);
+    notifyListeners();
+  }
 
   /// Load persisted history from storage
   Future<void> initialize() async {
@@ -32,6 +48,7 @@ class AiUsageTracker extends ChangeNotifier {
     final loaded = await _storage.loadRecords();
     _records.clear();
     _records.addAll(loaded);
+    _budgetCapUsd = await _storage.loadBudgetCap();
     _isInitialized = true;
     notifyListeners();
   }

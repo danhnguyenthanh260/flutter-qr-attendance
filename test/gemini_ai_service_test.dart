@@ -413,5 +413,60 @@ Tổng sĩ số lớp: 2 sinh viên
         expect(tracker.records.first.totalTokens, 950);
       },
     );
+
+    group('GeminiRestService.testApiKey Tests', () {
+      test('trả về isValid = true khi máy chủ phản hồi HTTP 200', () async {
+        final mockClient = MockClient((request) async {
+          expect(request.url.toString(), contains('models/gemini-2.5-flash'));
+          expect(request.headers['x-goog-api-key'], 'AIzaSyValidKey123');
+          return http.Response('{"name": "models/gemini-2.5-flash"}', 200);
+        });
+
+        final result = await GeminiRestService.testApiKey(
+          'AIzaSyValidKey123',
+          client: mockClient,
+        );
+
+        expect(result.isValid, isTrue);
+        expect(result.statusCode, 200);
+        expect(result.message, contains('hợp lệ'));
+      });
+
+      test('trả về lỗi 429 khi máy chủ phản hồi Rate Limit', () async {
+        final mockClient = MockClient((request) async {
+          return http.Response('{"error": {"code": 429}}', 429);
+        });
+
+        final result = await GeminiRestService.testApiKey(
+          'AIzaSyRateLimitedKey',
+          client: mockClient,
+        );
+
+        expect(result.isValid, isFalse);
+        expect(result.statusCode, 429);
+        expect(result.message, contains('429'));
+      });
+
+      test('trả về lỗi 403 khi key không hợp lệ hoặc bị từ chối', () async {
+        final mockClient = MockClient((request) async {
+          return http.Response('{"error": {"code": 403}}', 403);
+        });
+
+        final result = await GeminiRestService.testApiKey(
+          'AIzaSyInvalidKey',
+          client: mockClient,
+        );
+
+        expect(result.isValid, isFalse);
+        expect(result.statusCode, 403);
+        expect(result.message, contains('403'));
+      });
+
+      test('trả về lỗi khi chuỗi key rỗng', () async {
+        final result = await GeminiRestService.testApiKey('   ');
+        expect(result.isValid, isFalse);
+        expect(result.message, contains('không được để trống'));
+      });
+    });
   });
 }

@@ -189,5 +189,45 @@ void main() {
       expect(stored.isEmpty, isTrue);
       expect(tracker.getSummary().totalRequests, equals(0));
     });
+
+    test('budget cap management and warnings work accurately', () async {
+      await tracker.initialize();
+      expect(tracker.budgetCapUsd, equals(1.0));
+
+      await tracker.setBudgetCap(0.0001);
+      expect(tracker.budgetCapUsd, equals(0.0001));
+
+      // Ban đầu chưa có chi phí
+      expect(tracker.isBudgetExceeded, isFalse);
+      expect(tracker.isBudgetWarning, isFalse);
+      expect(tracker.budgetUsageRatio, equals(0.0));
+
+      // Ghi nhận lượt gọi tạo ra chi phí ~ $0.0000975 (vượt 80% của 0.0001)
+      await tracker.record(
+        operation: 'chat',
+        model: 'gemini-2.5-flash',
+        promptTokens: 500,
+        candidatesTokens: 200,
+        latencyMs: 1200,
+        keyMasked: '...4x8a',
+      );
+
+      expect(tracker.isBudgetWarning, isTrue);
+      expect(tracker.isBudgetExceeded, isFalse);
+      expect(tracker.budgetUsageRatio, greaterThanOrEqualTo(0.8));
+
+      // Ghi nhận thêm lượt gọi để vượt 100% hạn mức
+      await tracker.record(
+        operation: 'chat',
+        model: 'gemini-2.5-flash',
+        promptTokens: 500,
+        candidatesTokens: 200,
+        latencyMs: 1200,
+        keyMasked: '...4x8a',
+      );
+
+      expect(tracker.isBudgetExceeded, isTrue);
+      expect(tracker.budgetUsageRatio, equals(1.0));
+    });
   });
 }
