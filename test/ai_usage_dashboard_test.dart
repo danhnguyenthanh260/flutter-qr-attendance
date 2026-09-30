@@ -382,5 +382,137 @@ void main() {
         expect(find.byType(AiUsageDashboardDialog), findsNothing);
       },
     );
+
+    testWidgets(
+      'tìm kiếm theo từ khóa và lọc theo trạng thái thành công / thất bại',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
+
+        final storage = MemoryAiUsageStorage();
+        final tracker = AiUsageTracker(storage: storage);
+        await tracker.initialize();
+
+        // Bản ghi 1: Thành công
+        await tracker.record(
+          operation: 'chat',
+          model: 'gemini-2.5-flash',
+          promptTokens: 400,
+          candidatesTokens: 100,
+          latencyMs: 1200,
+          keyMasked: 'AIzaSy...4xK9',
+          isSuccess: true,
+        );
+
+        // Bản ghi 2: Thất bại do 429
+        await tracker.record(
+          operation: 'chat',
+          model: 'gemini-2.5-flash',
+          promptTokens: 0,
+          candidatesTokens: 0,
+          latencyMs: 150,
+          keyMasked: 'AIzaSy...8xZ2',
+          isSuccess: false,
+          errorMessage: 'Rate limit (429) quota exceeded',
+        );
+
+        final provider = AiAssistantProvider(
+          aiService: LocalAttendanceAiService(),
+          usageTracker: tracker,
+        );
+
+        await tester.pumpWidget(buildTestDialog(provider: provider));
+        await tester.pumpAndSettle();
+
+        // Ban đầu hiển thị cả 2 bản ghi
+        expect(find.text('Trò chuyện AI'), findsNWidgets(2));
+        expect(find.textContaining('Lỗi: Rate limit (429) quota exceeded'), findsOneWidget);
+
+        // Lọc chỉ xem lỗi: '✕ Lỗi (1)'
+        await tester.tap(find.text('✕ Lỗi (1)'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Lỗi: Rate limit (429) quota exceeded'), findsOneWidget);
+        expect(find.textContaining('400 in + 100 out'), findsNothing);
+
+        // Lọc chỉ xem thành công: '✓ Thành công (1)'
+        await tester.tap(find.text('✓ Thành công (1)'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('400 in + 100 out'), findsOneWidget);
+        expect(find.textContaining('Lỗi: Rate limit'), findsNothing);
+
+        // Quay lại 'Tất cả trạng thái'
+        await tester.tap(find.text('Tất cả'));
+        await tester.pumpAndSettle();
+
+        // Tìm kiếm theo từ khóa '429'
+        final searchField = find.byType(TextField);
+        expect(searchField, findsOneWidget);
+        await tester.enterText(searchField, '429');
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Lỗi: Rate limit (429) quota exceeded'), findsOneWidget);
+        expect(find.textContaining('400 in + 100 out'), findsNothing);
+
+        // Xóa tìm kiếm bằng nút (x)
+        await tester.tap(find.byIcon(Icons.clear));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Trò chuyện AI'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'chạm vào bản ghi để mở rộng xem chi tiết và kiểm tra nút sao chép tóm tắt',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
+
+        final storage = MemoryAiUsageStorage();
+        final tracker = AiUsageTracker(storage: storage);
+        await tracker.initialize();
+
+        await tracker.record(
+          operation: 'report',
+          model: 'gemini-2.5-flash',
+          promptTokens: 1200,
+          candidatesTokens: 600,
+          latencyMs: 3100,
+          keyMasked: 'AIzaSy...7yP3',
+          isSuccess: true,
+        );
+
+        final provider = AiAssistantProvider(
+          aiService: LocalAttendanceAiService(),
+          usageTracker: tracker,
+        );
+
+        await tester.pumpWidget(buildTestDialog(provider: provider));
+        await tester.pumpAndSettle();
+
+        // Ban đầu chưa mở rộng
+        expect(find.text('Chi tiết bản ghi tương tác:'), findsNothing);
+
+        // Chạm vào dòng bản ghi để mở rộng
+        await tester.tap(find.text('Tạo Báo cáo'));
+        await tester.pumpAndSettle();
+
+        // Đã mở rộng chi tiết
+        expect(find.text('Chi tiết bản ghi tương tác:'), findsOneWidget);
+        expect(find.textContaining('Prompt Token: 1200'), findsOneWidget);
+        expect(find.textContaining('Candidate Token: 600'), findsOneWidget);
+
+        // Kiểm tra nút Sao chép tóm tắt
+        final copyBtn = find.text('Sao chép tóm tắt');
+        expect(copyBtn, findsOneWidget);
+        await tester.tap(copyBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Đã sao chép tóm tắt thống kê AI vào bộ nhớ tạm!'), findsOneWidget);
+      },
+    );
   });
 }
