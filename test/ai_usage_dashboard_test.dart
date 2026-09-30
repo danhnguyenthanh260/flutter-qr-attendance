@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_qr_attendance/core/storage/ai_usage_storage.dart';
+import 'package:flutter_qr_attendance/data/models/ai_usage_record.dart';
 import 'package:flutter_qr_attendance/data/services/ai_usage_tracker.dart';
 import 'package:flutter_qr_attendance/data/services/attendance_service.dart';
 import 'package:flutter_qr_attendance/data/services/gemini_ai_service.dart';
@@ -524,5 +525,109 @@ void main() {
         expect(find.text('Đã sao chép tóm tắt thống kê AI vào bộ nhớ tạm!'), findsOneWidget);
       },
     );
+
+    testWidgets(
+      'lọc theo mốc thời gian (Hôm nay, 7 ngày qua, Toàn bộ) và mở bộ chọn ngày tùy chỉnh',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 1400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() => tester.view.resetPhysicalSize());
+
+        final storage = MemoryAiUsageStorage();
+        // Thêm 1 bản ghi hôm nay và 1 bản ghi cách đây 10 ngày
+        final now = DateTime.now();
+        await storage.saveRecords([
+          AiUsageRecord(
+            id: 'rec-today',
+            timestamp: now,
+            operation: 'chat',
+            model: 'gemini-2.5-flash',
+            promptTokens: 300,
+            candidatesTokens: 100,
+            totalTokens: 400,
+            estimatedCostUsd: 0.0001,
+            latencyMs: 800,
+            keyMasked: 'AIzaSy...today',
+            isSuccess: true,
+          ),
+          AiUsageRecord(
+            id: 'rec-old',
+            timestamp: now.subtract(const Duration(days: 10)),
+            operation: 'report',
+            model: 'gemini-2.5-flash',
+            promptTokens: 600,
+            candidatesTokens: 200,
+            totalTokens: 800,
+            estimatedCostUsd: 0.0002,
+            latencyMs: 1500,
+            keyMasked: 'AIzaSy...past',
+            isSuccess: true,
+          ),
+        ]);
+
+        final tracker = AiUsageTracker(storage: storage);
+        await tracker.initialize();
+
+        final provider = AiAssistantProvider(
+          aiService: LocalAttendanceAiService(),
+          usageTracker: tracker,
+        );
+
+        await tester.pumpWidget(buildTestDialog(provider: provider));
+        await tester.pumpAndSettle();
+
+        // Mặc định 'Toàn bộ': 2 bản ghi, 1,200 tokens
+        expect(find.text('2'), findsOneWidget);
+        expect(find.text('1,200'), findsOneWidget);
+
+        // Chuyển sang 'Hôm nay'
+        final todayChip = find.text('Hôm nay');
+        expect(todayChip, findsOneWidget);
+        await tester.tap(todayChip);
+        await tester.pumpAndSettle();
+
+        // Chỉ còn 1 bản ghi của hôm nay, 400 tokens (xuất hiện ở thẻ KPI và thanh biểu đồ)
+        expect(find.text('1'), findsOneWidget);
+        expect(find.text('400'), findsNWidgets(2));
+
+        // Chuyển sang '7 ngày qua'
+        final sevenDaysChip = find.text('7 ngày qua');
+        expect(sevenDaysChip, findsOneWidget);
+        await tester.tap(sevenDaysChip);
+        await tester.pumpAndSettle();
+
+        // Bản ghi 10 ngày trước không lọt vào 7 ngày qua => vẫn 1 bản ghi
+        expect(find.text('1'), findsOneWidget);
+        expect(find.text('400'), findsNWidgets(2));
+
+        // Chuyển lại 'Toàn bộ'
+        final allChip = find.text('Toàn bộ');
+        expect(allChip, findsOneWidget);
+        await tester.tap(allChip);
+        await tester.pumpAndSettle();
+
+        expect(find.text('2'), findsOneWidget);
+        expect(find.text('1,200'), findsOneWidget);
+
+        // Kiểm tra chip Tùy chỉnh...
+        final customChip = find.text('Tùy chỉnh...');
+        expect(customChip, findsOneWidget);
+        await tester.tap(customChip);
+        await tester.pumpAndSettle();
+
+        // Hộp thoại showDateRangePicker xuất hiện
+        expect(find.text('CHỌN KHOẢNG THỜI GIAN TÙY CHỈNH'), findsOneWidget);
+        expect(find.text('ÁP DỤNG'), findsOneWidget);
+
+        // Bấm nút Đóng (x) để đóng picker
+        final closePickerBtn = find.byIcon(Icons.close);
+        expect(closePickerBtn, findsWidgets);
+        await tester.tap(closePickerBtn.last);
+        await tester.pumpAndSettle();
+
+        expect(find.text('CHỌN KHOẢNG THỜI GIAN TÙY CHỈNH'), findsNothing);
+      },
+    );
   });
 }
+

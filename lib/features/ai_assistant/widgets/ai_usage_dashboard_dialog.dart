@@ -35,7 +35,8 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
   String _searchQuery = '';
   String _selectedFilter = 'all'; // 'all', 'chat', 'report'
   String _statusFilter = 'all'; // 'all', 'success', 'failure'
-  String _selectedDateRange = 'all'; // 'all', 'today', '7days', 'this_month'
+  String _selectedDateRange = 'all'; // 'all', 'today', '7days', 'this_month', 'custom'
+  DateTimeRange? _customDateRange;
   String _sortBy = 'newest'; // 'newest', 'oldest', 'tokens_desc', 'latency_desc', 'cost_desc'
   int _displayLimit = 20;
   final Set<String> _expandedRecordIds = {};
@@ -218,6 +219,12 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
         return '7 ngày qua';
       case 'this_month':
         return 'Tháng này';
+      case 'custom':
+        if (_customDateRange != null) {
+          final f = DateFormat('dd/MM/yyyy');
+          return 'Tùy chỉnh (${f.format(_customDateRange!.start)} - ${f.format(_customDateRange!.end)})';
+        }
+        return 'Tùy chỉnh';
       case 'all':
       default:
         return 'Toàn bộ';
@@ -236,9 +243,67 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
       case 'this_month':
         final startOfMonth = DateTime(now.year, now.month, 1);
         return records.where((r) => r.timestamp.isAfter(startOfMonth)).toList();
+      case 'custom':
+        if (_customDateRange == null) return records;
+        final start = DateTime(
+          _customDateRange!.start.year,
+          _customDateRange!.start.month,
+          _customDateRange!.start.day,
+          0, 0, 0,
+        );
+        final end = DateTime(
+          _customDateRange!.end.year,
+          _customDateRange!.end.month,
+          _customDateRange!.end.day,
+          23, 59, 59, 999,
+        );
+        return records.where((r) {
+          return (r.timestamp.isAfter(start) || r.timestamp.isAtSameMomentAs(start)) &&
+              (r.timestamp.isBefore(end) || r.timestamp.isAtSameMomentAs(end));
+        }).toList();
       case 'all':
       default:
         return records;
+    }
+  }
+
+  Future<void> _handlePickCustomDateRange() async {
+    final now = DateTime.now();
+    final initialRange = _customDateRange ??
+        DateTimeRange(
+          start: now.subtract(const Duration(days: 7)),
+          end: now,
+        );
+
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 2, 12, 31),
+      initialDateRange: initialRange,
+      helpText: 'CHỌN KHOẢNG THỜI GIAN TÙY CHỈNH',
+      cancelText: 'HỦY',
+      confirmText: 'ÁP DỤNG',
+      saveText: 'ÁP DỤNG',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primary,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customDateRange = picked;
+        _selectedDateRange = 'custom';
+      });
     }
   }
 
@@ -422,12 +487,16 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
   }
 
   Widget _buildDateRangeAndBudgetBar(AiUsageTracker tracker) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
       children: [
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 6,
+          runSpacing: 6,
           children: [
             const Icon(Icons.date_range_rounded, size: 16, color: AppColors.primary),
             const SizedBox(width: 2),
@@ -440,6 +509,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
             _buildDateChip('today', 'Hôm nay'),
             _buildDateChip('7days', '7 ngày qua'),
             _buildDateChip('this_month', 'Tháng này'),
+            _buildCustomDateChip(),
           ],
         ),
         // Budget cap action chip
@@ -458,6 +528,62 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCustomDateChip() {
+    final isSelected = _selectedDateRange == 'custom';
+    final hasRange = _customDateRange != null;
+    final label = hasRange
+        ? '${DateFormat('dd/MM').format(_customDateRange!.start)} - ${DateFormat('dd/MM').format(_customDateRange!.end)}'
+        : 'Tùy chỉnh...';
+
+    return InkWell(
+      onTap: () {
+        if (!isSelected && hasRange) {
+          setState(() => _selectedDateRange = 'custom');
+        } else {
+          _handlePickCustomDateRange();
+        }
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.date_range_outlined,
+              size: 13,
+              color: isSelected ? Colors.white : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : AppColors.textSecondary,
+              ),
+            ),
+            if (isSelected && hasRange) ...[
+              const SizedBox(width: 5),
+              InkWell(
+                onTap: _handlePickCustomDateRange,
+                child: const Icon(
+                  Icons.edit_calendar_outlined,
+                  size: 13,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -669,12 +795,26 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
 
   /// Visual Usage Trend Charts Section: Daily Token Bars & Task Distribution
   Widget _buildVisualChartsSection(List<AiUsageRecord> records) {
-    // 1. Group records by day for the last 7 days
     final now = DateTime.now();
-    final dayList = List.generate(7, (i) {
-      final d = now.subtract(Duration(days: 6 - i));
-      return DateTime(d.year, d.month, d.day);
-    });
+    final List<DateTime> dayList;
+    final String chartTitle;
+
+    if (_selectedDateRange == 'custom' && _customDateRange != null) {
+      final startDate = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day);
+      final endDate = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day);
+      final diff = endDate.difference(startDate).inDays;
+      final numDays = (diff + 1).clamp(1, 14);
+      dayList = List.generate(numDays, (i) {
+        return startDate.add(Duration(days: i));
+      });
+      chartTitle = 'Xu hướng Token tùy chọn (${DateFormat('dd/MM').format(startDate)} - ${DateFormat('dd/MM').format(dayList.last)}):';
+    } else {
+      dayList = List.generate(7, (i) {
+        final d = now.subtract(Duration(days: 6 - i));
+        return DateTime(d.year, d.month, d.day);
+      });
+      chartTitle = 'Xu hướng Token 7 ngày gần nhất:';
+    }
 
     final dayTokensMap = <DateTime, int>{};
     for (final day in dayList) {
@@ -732,15 +872,15 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                 direction: isNarrow ? Axis.vertical : Axis.horizontal,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Left: 7-day Token Trend Bar Chart
+                  // Left: Token Trend Bar Chart
                   Expanded(
                     flex: isNarrow ? 0 : 6,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Xu hướng Token 7 ngày gần nhất:',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                        Text(
+                          chartTitle,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                         ),
                         const SizedBox(height: 12),
                         SizedBox(
@@ -1409,6 +1549,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                 _selectedFilter = 'all';
                 _statusFilter = 'all';
                 _selectedDateRange = 'all';
+                _customDateRange = null;
               });
             },
             child: const Text('Đặt lại bộ lọc', style: TextStyle(fontSize: 12.5)),
