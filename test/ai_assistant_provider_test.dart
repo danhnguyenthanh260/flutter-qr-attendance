@@ -14,6 +14,7 @@ class MockAiService implements AttendanceAiService {
     required String context,
     String? apiKey,
     List<String>? apiKeys,
+    String operation = 'chat',
   }) async {
     return 'Phản hồi giả lập cho: $prompt';
   }
@@ -73,12 +74,17 @@ void main() {
     );
 
     expect(provider.messages.length, greaterThanOrEqualTo(3));
-    final userMsg = provider.messages.firstWhere((m) => m.sender == MessageSender.user);
+    final userMsg = provider.messages.firstWhere(
+      (m) => m.sender == MessageSender.user,
+    );
     expect(userMsg.content, 'Lớp hôm nay có bao nhiêu bạn?');
 
     final lastAiMsg = provider.messages.last;
     expect(lastAiMsg.sender, MessageSender.ai);
-    expect(lastAiMsg.content, contains('Phản hồi giả lập cho: Lớp hôm nay có bao nhiêu bạn?'));
+    expect(
+      lastAiMsg.content,
+      contains('Phản hồi giả lập cho: Lớp hôm nay có bao nhiêu bạn?'),
+    );
     expect(lastAiMsg.isLoading, isFalse);
   });
 

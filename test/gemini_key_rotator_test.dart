@@ -73,10 +73,60 @@ void main() {
         GeminiKeyRotator.maskKey('AIzaSyD9823hjasd8234j1k9'),
         'AIzaSy...j1k9',
       );
-      expect(
-        GeminiKeyRotator.maskKey('12345'),
-        '••••••••',
-      );
+      expect(GeminiKeyRotator.maskKey('12345'), '••••••••');
     });
+
+    test(
+      'Theo dõi trạng thái sức khỏe API keys (active, rateLimited, invalid)',
+      () {
+        final rotator = GeminiKeyRotator(['KEY_1', 'KEY_2', 'KEY_3']);
+        expect(rotator.activeKeyCount, 3);
+
+        final initialStatuses = rotator.getKeyStatuses();
+        expect(initialStatuses.length, 3);
+        expect(initialStatuses[0].status, KeyHealthStatus.active);
+        expect(initialStatuses[0].successCount, 0);
+        expect(initialStatuses[0].failureCount, 0);
+        expect(initialStatuses[0].lastError, isNull);
+
+        // Ghi nhận thành công cho KEY_1
+        rotator.recordSuccess('KEY_1');
+        var statuses = rotator.getKeyStatuses();
+        expect(statuses[0].successCount, 1);
+        expect(statuses[0].status, KeyHealthStatus.active);
+        expect(statuses[0].lastUsedAt, isNotNull);
+
+        // Ghi nhận lỗi 429 Rate Limit cho KEY_2
+        rotator.rotateOnFailure(
+          'KEY_2',
+          reason: 'Chạm giới hạn Rate Limit (429)',
+          isRateLimit: true,
+        );
+        statuses = rotator.getKeyStatuses();
+        expect(statuses[1].status, KeyHealthStatus.rateLimited);
+        expect(statuses[1].failureCount, 1);
+        expect(statuses[1].lastError, contains('429'));
+        expect(rotator.activeKeyCount, 2);
+
+        // Ghi nhận lỗi 403 Invalid cho KEY_3
+        rotator.rotateOnFailure(
+          'KEY_3',
+          reason: 'Key không hợp lệ (403)',
+          isInvalid: true,
+        );
+        statuses = rotator.getKeyStatuses();
+        expect(statuses[2].status, KeyHealthStatus.invalid);
+        expect(statuses[2].failureCount, 1);
+        expect(rotator.activeKeyCount, 1);
+
+        // Reset sức khỏe toàn bộ keys
+        rotator.resetKeyHealth();
+        statuses = rotator.getKeyStatuses();
+        expect(rotator.activeKeyCount, 3);
+        expect(statuses[1].status, KeyHealthStatus.active);
+        expect(statuses[2].status, KeyHealthStatus.active);
+        expect(statuses[1].lastError, isNull);
+      },
+    );
   });
 }
