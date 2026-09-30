@@ -1,8 +1,11 @@
 import 'dart:convert';
 
+import 'package:flutter_qr_attendance/core/storage/ai_usage_storage.dart';
 import 'package:flutter_qr_attendance/data/models/attendance_summary.dart';
 import 'package:flutter_qr_attendance/data/models/session_model.dart';
+import 'package:flutter_qr_attendance/data/services/ai_usage_tracker.dart';
 import 'package:flutter_qr_attendance/data/services/gemini_ai_service.dart';
+import 'package:flutter_qr_attendance/data/services/gemini_key_rotator.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -14,7 +17,10 @@ void main() {
 
   setUp(() {
     final session = buildSession(id: 'SES_TEST', status: SessionStatus.closed);
-    final roster1 = buildRosterEntry('student1@fpt.edu.vn', name: 'Nguyễn Văn A');
+    final roster1 = buildRosterEntry(
+      'student1@fpt.edu.vn',
+      name: 'Nguyễn Văn A',
+    );
     final roster2 = buildRosterEntry('student2@fpt.edu.vn', name: 'Trần Thị B');
 
     final row1 = StudentAttendanceRow(
@@ -58,7 +64,9 @@ void main() {
 
   group('AttendancePromptBuilder', () {
     test('xây dựng ngữ cảnh đầy đủ từ AttendanceSummary', () {
-      final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);
+      final context = AttendancePromptBuilder.buildContext(
+        summary: sampleSummary,
+      );
 
       expect(context, contains('PRM392 - Flutter'));
       expect(context, contains('Tổng sĩ số lớp: 2'));
@@ -76,7 +84,9 @@ void main() {
     final localAi = LocalAttendanceAiService();
 
     test('cảnh báo chính xác sinh viên vắng gần 20% và bị cấm thi', () async {
-      final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);
+      final context = AttendancePromptBuilder.buildContext(
+        summary: sampleSummary,
+      );
       final response = await localAi.askAi(
         prompt: 'Ai vắng gần 20% và ai bị cấm thi?',
         context: context,
@@ -88,8 +98,10 @@ void main() {
       expect(response, contains('Email'));
     });
 
-    test('hiển thị chi tiết sinh viên bị cấm thi và nguy cơ khi có trong context', () async {
-      const customContext = '''
+    test(
+      'hiển thị chi tiết sinh viên bị cấm thi và nguy cơ khi có trong context',
+      () async {
+        const customContext = '''
 === DỮ LIỆU ĐIỂM DANH HIỆN TẠI ===
 Môn học / Lớp: PRM392 - Flutter
 Tổng sĩ số lớp: 2 sinh viên
@@ -98,19 +110,22 @@ Tổng sĩ số lớp: 2 sinh viên
 --- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI (VẮNG GẦN 20% - TIỆM CẬN NGƯỠNG) ---
 1. Trần Thị B | Email: binhtt@fpt.edu.vn | Đã vắng: 5/30 slot (16.7%) | Còn được phép nghỉ tối đa: 0 buổi
 ''';
-      final response = await localAi.askAi(
-        prompt: 'Danh sách sinh viên cấm thi và vắng gần 20%?',
-        context: customContext,
-      );
+        final response = await localAi.askAi(
+          prompt: 'Danh sách sinh viên cấm thi và vắng gần 20%?',
+          context: customContext,
+        );
 
-      expect(response, contains('annd@fpt.edu.vn'));
-      expect(response, contains('binhtt@fpt.edu.vn'));
-      expect(response, contains('7/30 slot'));
-      expect(response, contains('5/30 slot'));
-    });
+        expect(response, contains('annd@fpt.edu.vn'));
+        expect(response, contains('binhtt@fpt.edu.vn'));
+        expect(response, contains('7/30 slot'));
+        expect(response, contains('5/30 slot'));
+      },
+    );
 
     test('trả lời chính xác câu hỏi về sinh viên vắng', () async {
-      final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);
+      final context = AttendancePromptBuilder.buildContext(
+        summary: sampleSummary,
+      );
       final response = await localAi.askAi(
         prompt: 'Hôm nay có những bạn nào vắng?',
         context: context,
@@ -121,7 +136,9 @@ Tổng sĩ số lớp: 2 sinh viên
     });
 
     test('trả lời chính xác câu hỏi về tỷ lệ chuyên cần', () async {
-      final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);
+      final context = AttendancePromptBuilder.buildContext(
+        summary: sampleSummary,
+      );
       final response = await localAi.askAi(
         prompt: 'Tỷ lệ chuyên cần của lớp hôm nay là bao nhiêu?',
         context: context,
@@ -132,7 +149,9 @@ Tổng sĩ số lớp: 2 sinh viên
     });
 
     test('trả lời chính xác câu hỏi về nộp trùng lặp', () async {
-      final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);
+      final context = AttendancePromptBuilder.buildContext(
+        summary: sampleSummary,
+      );
       final response = await localAi.askAi(
         prompt: 'Có sinh viên nào nộp trùng lặp không?',
         context: context,
@@ -166,11 +185,11 @@ Tổng sĩ số lớp: 2 sinh viên
             {
               'content': {
                 'parts': [
-                  {'text': 'Hôm nay có 1 sinh viên vắng mặt là Trần Thị B.'}
-                ]
-              }
-            }
-          ]
+                  {'text': 'Hôm nay có 1 sinh viên vắng mặt là Trần Thị B.'},
+                ],
+              },
+            },
+          ],
         };
 
         return http.Response.bytes(
@@ -190,50 +209,58 @@ Tổng sĩ số lớp: 2 sinh viên
       expect(answer, 'Hôm nay có 1 sinh viên vắng mặt là Trần Thị B.');
     });
 
-    test('tự động failover sang key thứ hai khi key đầu tiên bị 429 Rate Limit', () async {
-      final keysCalled = <String>[];
-      final mockClient = MockClient((request) async {
-        final key = request.url.queryParameters['key']!;
-        keysCalled.add(key);
+    test(
+      'tự động failover sang key thứ hai khi key đầu tiên bị 429 Rate Limit',
+      () async {
+        final keysCalled = <String>[];
+        final mockClient = MockClient((request) async {
+          final key = request.url.queryParameters['key']!;
+          keysCalled.add(key);
 
-        if (key == 'KEY_1') {
-          // Key 1 bị 429 Rate Limit
-          return http.Response('{"error": "Resource has been exhausted"}', 429);
-        }
+          if (key == 'KEY_1') {
+            // Key 1 bị 429 Rate Limit
+            return http.Response(
+              '{"error": "Resource has been exhausted"}',
+              429,
+            );
+          }
 
-        // Key 2 thành công
-        final responseBody = {
-          'candidates': [
-            {
-              'content': {
-                'parts': [
-                  {'text': 'Phản hồi thành công từ Key 2!'}
-                ]
-              }
-            }
-          ]
-        };
-        return http.Response.bytes(
-          utf8.encode(jsonEncode(responseBody)),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
+          // Key 2 thành công
+          final responseBody = {
+            'candidates': [
+              {
+                'content': {
+                  'parts': [
+                    {'text': 'Phản hồi thành công từ Key 2!'},
+                  ],
+                },
+              },
+            ],
+          };
+          return http.Response.bytes(
+            utf8.encode(jsonEncode(responseBody)),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        });
+
+        final service = GeminiRestService(client: mockClient);
+        final answer = await service.askAi(
+          prompt: 'Ai vắng?',
+          context: 'Ngữ cảnh điểm danh',
+          apiKeys: ['KEY_1', 'KEY_2'],
         );
-      });
 
-      final service = GeminiRestService(client: mockClient);
-      final answer = await service.askAi(
-        prompt: 'Ai vắng?',
-        context: 'Ngữ cảnh điểm danh',
-        apiKeys: ['KEY_1', 'KEY_2'],
-      );
-
-      expect(keysCalled, ['KEY_1', 'KEY_2']);
-      expect(answer, 'Phản hồi thành công từ Key 2!');
-    });
+        expect(keysCalled, ['KEY_1', 'KEY_2']);
+        expect(answer, 'Phản hồi thành công từ Key 2!');
+      },
+    );
 
     test('fallback sang Local Engine khi không có API key', () async {
       final service = GeminiRestService();
-      final context = AttendancePromptBuilder.buildContext(summary: sampleSummary);
+      final context = AttendancePromptBuilder.buildContext(
+        summary: sampleSummary,
+      );
 
       final answer = await service.askAi(
         prompt: 'Ai vắng?',
@@ -243,5 +270,148 @@ Tổng sĩ số lớp: 2 sinh viên
 
       expect(answer, contains('Trần Thị B'));
     });
+
+    test(
+      'bóc tách usageMetadata và ghi nhận token metrics vào AiUsageTracker',
+      () async {
+        final tracker = AiUsageTracker(storage: MemoryAiUsageStorage());
+        final rotator = GeminiKeyRotator(['KEY_TEST_USAGE']);
+
+        final mockClient = MockClient((request) async {
+          final responseBody = {
+            'candidates': [
+              {
+                'content': {
+                  'parts': [
+                    {'text': 'Hôm nay lớp có 1 sinh viên vắng mặt.'},
+                  ],
+                },
+              },
+            ],
+            'usageMetadata': {
+              'promptTokenCount': 420,
+              'candidatesTokenCount': 130,
+              'totalTokenCount': 550,
+            },
+          };
+
+          return http.Response.bytes(
+            utf8.encode(jsonEncode(responseBody)),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        });
+
+        final service = GeminiRestService(
+          client: mockClient,
+          rotator: rotator,
+          usageTracker: tracker,
+        );
+
+        final answer = await service.askAi(
+          prompt: 'Thống kê sinh viên vắng',
+          context: 'Ngữ cảnh buổi học',
+        );
+
+        expect(answer, contains('1 sinh viên vắng mặt'));
+        expect(tracker.records.length, 1);
+
+        final record = tracker.records.first;
+        expect(record.operation, 'chat');
+        expect(record.promptTokens, 420);
+        expect(record.candidatesTokens, 130);
+        expect(record.totalTokens, 550);
+        expect(record.isSuccess, isTrue);
+        expect(record.estimatedCostUsd, greaterThan(0));
+        expect(record.keyMasked, contains('...'));
+
+        // Kiểm tra sức khỏe rotator
+        final keyStats = rotator.getKeyStatuses().first;
+        expect(keyStats.status, KeyHealthStatus.active);
+        expect(keyStats.successCount, 1);
+        expect(keyStats.failureCount, 0);
+      },
+    );
+
+    test('ghi nhận lỗi 429 và cập nhật trạng thái rateLimited vào GeminiKeyRotator', () async {
+      final tracker = AiUsageTracker(storage: MemoryAiUsageStorage());
+      final rotator = GeminiKeyRotator(['KEY_RATE_LIMITED']);
+
+      final mockClient = MockClient((request) async {
+        return http.Response(
+          '{"error": {"message": "Resource exhausted"}}',
+          429,
+        );
+      });
+
+      final service = GeminiRestService(
+        client: mockClient,
+        rotator: rotator,
+        usageTracker: tracker,
+      );
+
+      // Khi key bị 429 và không còn key nào khác, service sẽ fallback về Local Engine
+      final answer = await service.askAi(
+        prompt: 'Ai vắng?',
+        context: AttendancePromptBuilder.buildContext(summary: sampleSummary),
+      );
+
+      expect(answer, contains('Trần Thị B'));
+      expect(tracker.records.length, 1);
+
+      final record = tracker.records.first;
+      expect(record.isSuccess, isFalse);
+      expect(record.errorMessage, contains('429'));
+
+      final keyStats = rotator.getKeyStatuses().first;
+      expect(keyStats.status, KeyHealthStatus.rateLimited);
+      expect(keyStats.failureCount, 1);
+    });
+
+    test(
+      'generateReport ghi nhận loại thao tác report vào usageTracker',
+      () async {
+        final tracker = AiUsageTracker(storage: MemoryAiUsageStorage());
+        final rotator = GeminiKeyRotator(['KEY_REPORT_OP']);
+
+        final mockClient = MockClient((request) async {
+          final responseBody = {
+            'candidates': [
+              {
+                'content': {
+                  'parts': [
+                    {'text': '# BÁO CÁO ĐIỂM DANH TỔNG QUAN'},
+                  ],
+                },
+              },
+            ],
+            'usageMetadata': {
+              'promptTokenCount': 600,
+              'candidatesTokenCount': 350,
+              'totalTokenCount': 950,
+            },
+          };
+
+          return http.Response.bytes(
+            utf8.encode(jsonEncode(responseBody)),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        });
+
+        final service = GeminiRestService(
+          client: mockClient,
+          rotator: rotator,
+          usageTracker: tracker,
+        );
+
+        final report = await service.generateReport(summary: sampleSummary);
+
+        expect(report, contains('BÁO CÁO ĐIỂM DANH'));
+        expect(tracker.records.length, 1);
+        expect(tracker.records.first.operation, 'report');
+        expect(tracker.records.first.totalTokens, 950);
+      },
+    );
   });
 }

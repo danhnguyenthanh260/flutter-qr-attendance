@@ -6,6 +6,7 @@ import '../attendance/attendance_history_provider.dart';
 import '../attendance/attendance_results_provider.dart';
 import 'ai_assistant_provider.dart';
 import 'widgets/ai_settings_dialog.dart';
+import 'widgets/ai_usage_dashboard_dialog.dart';
 import 'widgets/chat_message_bubble.dart';
 import 'widgets/report_preview_dialog.dart';
 
@@ -57,7 +58,8 @@ class _AiAssistantViewState extends State<AiAssistantView> {
     final resultsProvider = context.read<AttendanceResultsProvider>();
     final historyProvider = context.read<AttendanceHistoryProvider>();
 
-    final selectedClass = resultsProvider.selectedClass ?? historyProvider.selectedClass;
+    final selectedClass =
+        resultsProvider.selectedClass ?? historyProvider.selectedClass;
 
     _scrollToBottom();
     await aiProvider.sendMessage(
@@ -78,14 +80,17 @@ class _AiAssistantViewState extends State<AiAssistantView> {
     if (summary == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Vui lòng chọn hoặc mở một phiên điểm danh ở tab "Bảng điểm danh" trước khi tạo báo cáo.'),
+          content: Text(
+            'Vui lòng chọn hoặc mở một phiên điểm danh ở tab "Bảng điểm danh" trước khi tạo báo cáo.',
+          ),
           backgroundColor: AppColors.warning,
         ),
       );
       return;
     }
 
-    final selectedClass = resultsProvider.selectedClass ?? historyProvider.selectedClass;
+    final selectedClass =
+        resultsProvider.selectedClass ?? historyProvider.selectedClass;
 
     _scrollToBottom();
     final report = await aiProvider.generateReport(
@@ -158,22 +163,32 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: aiProvider.hasApiKey
-                                  ? AppColors.successBg
-                                  : const Color(0xFFFEF3C7),
+                          Tooltip(
+                            message: 'Xem bảng thống kê sử dụng AI & Chi phí',
+                            child: InkWell(
+                              onTap: () => AiUsageDashboardDialog.show(context),
                               borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              aiProvider.activeKeyStatus,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: aiProvider.hasApiKey
-                                    ? const Color(0xFF166534)
-                                    : const Color(0xFF92400E),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: aiProvider.hasApiKey
+                                      ? AppColors.successBg
+                                      : const Color(0xFFFEF3C7),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  aiProvider.activeKeyStatus,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: aiProvider.hasApiKey
+                                        ? const Color(0xFF166534)
+                                        : const Color(0xFF92400E),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -202,13 +217,18 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                   ),
-                  onPressed: aiProvider.isGenerating ? null : _handleGenerateReport,
+                  onPressed: aiProvider.isGenerating
+                      ? null
+                      : _handleGenerateReport,
                   icon: const Icon(Icons.description_outlined, size: 18),
                   label: const Text('Tạo báo cáo chuyên cần'),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textSecondary,
@@ -216,7 +236,27 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
+                  onPressed: () => AiUsageDashboardDialog.show(context),
+                  icon: const Icon(Icons.analytics_outlined, size: 16),
+                  label: const Text('Thống kê AI'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
                   onPressed: () => AiSettingsDialog.show(context),
                   icon: const Icon(Icons.tune_outlined, size: 16),
@@ -225,7 +265,11 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                 const SizedBox(width: 6),
                 IconButton(
                   tooltip: 'Xóa lịch sử chat',
-                  icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.textMuted),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 20,
+                    color: AppColors.textMuted,
+                  ),
                   onPressed: aiProvider.clearMessages,
                 ),
               ],
@@ -267,7 +311,10 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                         borderRadius: BorderRadius.circular(20),
                         side: const BorderSide(color: AppColors.border),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       label: Text(
                         prompt,
                         style: const TextStyle(
@@ -302,10 +349,16 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                     maxLines: 4,
                     decoration: InputDecoration(
                       hintText: 'Nhập câu hỏi tra cứu chuyên cần, sinh viên vắng, nguy cơ cấm thi...',
-                      hintStyle: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+                      hintStyle: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textMuted,
+                      ),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
                         borderSide: const BorderSide(color: AppColors.border),
@@ -316,7 +369,10 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                        borderSide: const BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                     onSubmitted: (value) => _handleSend(value),
@@ -338,7 +394,11 @@ class _AiAssistantViewState extends State<AiAssistantView> {
                               color: Colors.white,
                             ),
                           )
-                        : const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+                        : const Icon(
+                            Icons.arrow_upward_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                     onPressed: aiProvider.isGenerating
                         ? null
                         : () => _handleSend(_inputController.text),

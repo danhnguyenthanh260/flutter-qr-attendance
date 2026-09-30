@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
@@ -6,6 +7,7 @@ import '../models/attendance_summary.dart';
 import '../models/class_model.dart';
 import '../models/session_day_group.dart';
 import '../models/student_absence_warning.dart';
+import 'ai_usage_tracker.dart';
 import 'gemini_key_rotator.dart';
 
 abstract class AttendanceAiService {
@@ -14,6 +16,7 @@ abstract class AttendanceAiService {
     required String context,
     String? apiKey,
     List<String>? apiKeys,
+    String operation = 'chat',
   });
 
   Future<String> generateReport({
@@ -41,26 +44,41 @@ class AttendancePromptBuilder {
       final scope = summary.scope;
       final timeFormat = DateFormat('HH:mm:ss');
       final percent = summary.totalStudents > 0
-          ? ((summary.presentCount / summary.totalStudents) * 100).toStringAsFixed(1)
+          ? ((summary.presentCount / summary.totalStudents) * 100)
+                .toStringAsFixed(1)
           : '0.0';
 
       buffer.writeln('Môn học / Lớp: ${scope.className}');
-      buffer.writeln('Ngày: ${scope.date} | Ca học: Slot ${scope.slotNumber} (${scope.timeRange})');
-      buffer.writeln('Trạng thái phiên: ${summary.isFinalized ? "ĐÃ CHỐT SỔ" : "ĐANG MỞ (TẠM TÍNH)"}');
+      buffer.writeln(
+        'Ngày: ${scope.date} | Ca học: Slot ${scope.slotNumber} (${scope.timeRange})',
+      );
+      buffer.writeln(
+        'Trạng thái phiên: ${summary.isFinalized ? "ĐÃ CHỐT SỔ" : "ĐANG MỞ (TẠM TÍNH)"}',
+      );
       buffer.writeln('Tổng sĩ số lớp: ${summary.totalStudents} sinh viên');
-      buffer.writeln('Số sinh viên CÓ MẶT: ${summary.presentCount} sinh viên ($percent%)');
-      buffer.writeln('Số sinh viên VẮNG / CHƯA ĐIỂM DANH: ${summary.pendingCount} sinh viên');
-      buffer.writeln('Số sự kiện cảnh báo nộp trùng / nghi vấn: ${summary.retryEventCount} lượt');
+      buffer.writeln(
+        'Số sinh viên CÓ MẶT: ${summary.presentCount} sinh viên ($percent%)',
+      );
+      buffer.writeln(
+        'Số sinh viên VẮNG / CHƯA ĐIỂM DANH: ${summary.pendingCount} sinh viên',
+      );
+      buffer.writeln(
+        'Số sự kiện cảnh báo nộp trùng / nghi vấn: ${summary.retryEventCount} lượt',
+      );
 
       // Danh sách vắng
       final absentRows = summary.rows
           .where((r) => r.status != StudentAttendanceStatus.present)
           .toList();
       if (absentRows.isNotEmpty) {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN VẮNG HOẶC CHƯA ĐIỂM DANH Ở BUỔI HIỆN TẠI ---');
+        buffer.writeln(
+          '\n--- DANH SÁCH SINH VIÊN VẮNG HOẶC CHƯA ĐIỂM DANH Ở BUỔI HIỆN TẠI ---',
+        );
         for (var i = 0; i < absentRows.length; i++) {
           final row = absentRows[i];
-          buffer.writeln('${i + 1}. ${row.student.displayName} (${row.student.email}) - Trạng thái: ${row.status.name}');
+          buffer.writeln(
+            '${i + 1}. ${row.student.displayName} (${row.student.email}) - Trạng thái: ${row.status.name}',
+          );
         }
       }
 
@@ -72,8 +90,12 @@ class AttendancePromptBuilder {
         buffer.writeln('\n--- DANH SÁCH SINH VIÊN ĐÃ ĐIỂM DANH CÓ MẶT ---');
         for (var i = 0; i < presentRows.length; i++) {
           final row = presentRows[i];
-          final timeStr = row.acceptedAt != null ? timeFormat.format(row.acceptedAt!) : 'N/A';
-          buffer.writeln('${i + 1}. ${row.student.displayName} (${row.student.email}) - Thời gian quét: $timeStr');
+          final timeStr = row.acceptedAt != null
+              ? timeFormat.format(row.acceptedAt!)
+              : 'N/A';
+          buffer.writeln(
+            '${i + 1}. ${row.student.displayName} (${row.student.email}) - Thời gian quét: $timeStr',
+          );
         }
       }
 
@@ -82,8 +104,12 @@ class AttendancePromptBuilder {
         buffer.writeln('\n--- CẢNH BÁO NỘP TRÙNG LẶP / GIAN LẬN ---');
         for (var i = 0; i < summary.retryEvents.length; i++) {
           final evt = summary.retryEvents[i];
-          final timeStr = evt.occurredAt != null ? timeFormat.format(evt.occurredAt!) : 'N/A';
-          buffer.writeln('${i + 1}. ${evt.displayName} - Lúc: $timeStr - Ghi chú: ${evt.attempt.attemptType}');
+          final timeStr = evt.occurredAt != null
+              ? timeFormat.format(evt.occurredAt!)
+              : 'N/A';
+          buffer.writeln(
+            '${i + 1}. ${evt.displayName} - Lúc: $timeStr - Ghi chú: ${evt.attempt.attemptType}',
+          );
         }
       }
 
@@ -95,39 +121,61 @@ class AttendancePromptBuilder {
         totalSlots: effectiveTotalSlots,
       );
       final barredStudents = absenceRecords.where((r) => r.isBarred).toList();
-      final dangerStudents = absenceRecords.where((r) => r.isNearDanger).toList();
+      final dangerStudents = absenceRecords
+          .where((r) => r.isNearDanger)
+          .toList();
       final maxAllowed = (effectiveTotalSlots * 0.20).floor();
       final barredMin = maxAllowed + 1;
 
-      buffer.writeln('\n=== THỐNG KÊ TÍCH LŨY CẢ KỲ & CẢNH BÁO CẤM THI (QUY CHẾ FPTU: VẮNG QUÁ 20% TỔNG SỐ SLOT) ===');
-      buffer.writeln('• Quy định môn học: $effectiveTotalSlots slots/kỳ. Được phép vắng tối đa: $maxAllowed slots (≤ 20%). Cấm thi khi vắng từ $barredMin slots trở lên (> 20%).');
-      buffer.writeln('• Email là định danh duy nhất của mỗi sinh viên trong hệ thống.');
+      buffer.writeln(
+        '\n=== THỐNG KÊ TÍCH LŨY CẢ KỲ & CẢNH BÁO CẤM THI (QUY CHẾ FPTU: VẮNG QUÁ 20% TỔNG SỐ SLOT) ===',
+      );
+      buffer.writeln(
+        '• Quy định môn học: $effectiveTotalSlots slots/kỳ. Được phép vắng tối đa: $maxAllowed slots (≤ 20%). Cấm thi khi vắng từ $barredMin slots trở lên (> 20%).',
+      );
+      buffer.writeln(
+        '• Email là định danh duy nhất của mỗi sinh viên trong hệ thống.',
+      );
 
       if (barredStudents.isNotEmpty) {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI (VẮNG QUÁ 20% TỔNG SỐ SLOT) ---');
+        buffer.writeln(
+          '\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI (VẮNG QUÁ 20% TỔNG SỐ SLOT) ---',
+        );
         for (var i = 0; i < barredStudents.length; i++) {
           final s = barredStudents[i];
-          buffer.writeln('${i + 1}. ${s.studentName} | Email: ${s.email} | Đã vắng: ${s.totalAbsentSlots}/$effectiveTotalSlots slot (${s.absenceRate.toStringAsFixed(1)}%) | Trạng thái: CẤM THI');
+          buffer.writeln(
+            '${i + 1}. ${s.studentName} | Email: ${s.email} | Đã vắng: ${s.totalAbsentSlots}/$effectiveTotalSlots slot (${s.absenceRate.toStringAsFixed(1)}%) | Trạng thái: CẤM THI',
+          );
         }
       } else {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI: Hiện tại chưa có sinh viên nào vắng quá 20% (trên $maxAllowed slot).');
+        buffer.writeln(
+          '\n--- DANH SÁCH SINH VIÊN BỊ CẤM THI: Hiện tại chưa có sinh viên nào vắng quá 20% (trên $maxAllowed slot).',
+        );
       }
 
       if (dangerStudents.isNotEmpty) {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI (VẮNG GẦN HOẶC CHẠM 20%) ---');
+        buffer.writeln(
+          '\n--- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI (VẮNG GẦN HOẶC CHẠM 20%) ---',
+        );
         for (var i = 0; i < dangerStudents.length; i++) {
           final s = dangerStudents[i];
-          buffer.writeln('${i + 1}. ${s.studentName} | Email: ${s.email} | Đã vắng: ${s.totalAbsentSlots}/$effectiveTotalSlots slot (${s.absenceRate.toStringAsFixed(1)}%) | Còn được phép nghỉ tối đa: ${s.remainingAllowedSlots} buổi');
+          buffer.writeln(
+            '${i + 1}. ${s.studentName} | Email: ${s.email} | Đã vắng: ${s.totalAbsentSlots}/$effectiveTotalSlots slot (${s.absenceRate.toStringAsFixed(1)}%) | Còn được phép nghỉ tối đa: ${s.remainingAllowedSlots} buổi',
+          );
         }
       } else {
-        buffer.writeln('\n--- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI: Không có sinh viên nào ở vùng nguy cơ tiệm cận ngưỡng.');
+        buffer.writeln(
+          '\n--- DANH SÁCH SINH VIÊN NGUY CƠ CẤM THI: Không có sinh viên nào ở vùng nguy cơ tiệm cận ngưỡng.',
+        );
       }
     }
 
     if (history != null && history.isNotEmpty) {
       buffer.writeln('\n=== LỊCH SỬ CÁC BUỔI HỌC TRƯỚC ĐÓ ===');
       for (final group in history) {
-        buffer.writeln('• Ngày ${group.date}: ${group.sessions.length} phiên học.');
+        buffer.writeln(
+          '• Ngày ${group.date}: ${group.sessions.length} phiên học.',
+        );
       }
     }
 
@@ -138,6 +186,7 @@ class AttendancePromptBuilder {
 class GeminiRestService implements AttendanceAiService {
   final http.Client _client;
   final GeminiKeyRotator _rotator;
+  final AiUsageTracker _usageTracker;
   static const List<String> _candidateModels = [
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
@@ -145,11 +194,16 @@ class GeminiRestService implements AttendanceAiService {
     'gemini-flash-latest',
   ];
 
-  GeminiRestService({http.Client? client, GeminiKeyRotator? rotator})
-      : _client = client ?? http.Client(),
-        _rotator = rotator ?? GeminiKeyRotator();
+  GeminiRestService({
+    http.Client? client,
+    GeminiKeyRotator? rotator,
+    AiUsageTracker? usageTracker,
+  }) : _client = client ?? http.Client(),
+       _rotator = rotator ?? GeminiKeyRotator(),
+       _usageTracker = usageTracker ?? AiUsageTracker.instance;
 
   GeminiKeyRotator get rotator => _rotator;
+  AiUsageTracker get usageTracker => _usageTracker;
 
   @override
   Future<String> askAi({
@@ -157,6 +211,7 @@ class GeminiRestService implements AttendanceAiService {
     required String context,
     String? apiKey,
     List<String>? apiKeys,
+    String operation = 'chat',
   }) async {
     if (apiKeys != null && apiKeys.isNotEmpty) {
       _rotator.setKeys(apiKeys);
@@ -169,6 +224,7 @@ class GeminiRestService implements AttendanceAiService {
       return LocalAttendanceAiService().askAi(
         prompt: prompt,
         context: context,
+        operation: operation,
       );
     }
 
@@ -189,21 +245,16 @@ class GeminiRestService implements AttendanceAiService {
         {
           'role': 'user',
           'parts': [
-            {
-              'text': '$context\n\n=== CÂU HỎI CỦA GIẢNG VIÊN ===\n$prompt',
-            }
-          ]
-        }
+            {'text': '$context\n\n=== CÂU HỎI CỦA GIẢNG VIÊN ===\n$prompt'},
+          ],
+        },
       ],
       'systemInstruction': {
         'parts': [
-          {'text': systemInstruction}
-        ]
+          {'text': systemInstruction},
+        ],
       },
-      'generationConfig': {
-        'temperature': 0.2,
-        'maxOutputTokens': 1200,
-      }
+      'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 1200},
     };
 
     final totalKeys = _rotator.keyCount;
@@ -219,6 +270,7 @@ class GeminiRestService implements AttendanceAiService {
           'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key',
         );
 
+        final stopwatch = Stopwatch()..start();
         try {
           final response = await _client
               .post(
@@ -231,29 +283,75 @@ class GeminiRestService implements AttendanceAiService {
               )
               .timeout(const Duration(seconds: 15));
 
+          stopwatch.stop();
+          final latencyMs = stopwatch.elapsedMilliseconds;
+
           if (response.statusCode == 200) {
-            final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+            final data = jsonDecode(
+              utf8.decode(response.bodyBytes),
+            ) as Map<String, dynamic>;
+
+            // Bóc tách usageMetadata từ Gemini API response
+            int promptTokens = 0;
+            int candidatesTokens = 0;
+            if (data['usageMetadata'] is Map<String, dynamic>) {
+              final usage = data['usageMetadata'] as Map<String, dynamic>;
+              promptTokens = (usage['promptTokenCount'] as num?)?.toInt() ?? 0;
+              candidatesTokens =
+                  (usage['candidatesTokenCount'] as num?)?.toInt() ?? 0;
+            }
+
+            // Ghi nhận metrics thành công và cập nhật sức khỏe API Key
+            _rotator.recordSuccess(key);
+            await _usageTracker.record(
+              operation: operation,
+              model: model,
+              promptTokens: promptTokens,
+              candidatesTokens: candidatesTokens,
+              latencyMs: latencyMs,
+              keyMasked: GeminiKeyRotator.maskKey(key),
+              isSuccess: true,
+            );
+
             final candidates = data['candidates'] as List?;
             if (candidates != null && candidates.isNotEmpty) {
               final content = candidates[0]['content'] as Map<String, dynamic>?;
               final parts = content?['parts'] as List?;
               if (parts != null && parts.isNotEmpty) {
-                return parts[0]['text'] as String? ?? 'Không nhận được phản hồi từ AI.';
+                return parts[0]['text'] as String? ??
+                    'Không nhận được phản hồi từ AI.';
               }
             }
             return 'Không thể phân tích phản hồi từ Gemini API.';
           } else if (response.statusCode == 404 || response.statusCode == 503) {
             // Model này không tìm thấy (404) hoặc đang quá tải tạm thời (503 High Demand) -> tự động chuyển sang model kế tiếp
-            lastError = 'Mô hình $model ${response.statusCode == 503 ? "đang quá tải tạm thời (503)" : "không tìm thấy (404)"}.';
+            lastError =
+                'Mô hình $model ${response.statusCode == 503 ? "đang quá tải tạm thời (503)" : "không tìm thấy (404)"}.';
             continue;
           } else if (response.statusCode == 429) {
             // Quota / Rate limit error -> tự động chuyển sang key kế tiếp
-            _rotator.rotateOnFailure(key);
-            lastError = 'Key ${GeminiKeyRotator.maskKey(key)} đã chạm ngưỡng Rate Limit (429).';
+            _rotator.rotateOnFailure(
+              key,
+              reason: 'Chạm giới hạn Rate Limit (429)',
+              isRateLimit: true,
+            );
+            await _usageTracker.record(
+              operation: operation,
+              model: model,
+              promptTokens: 0,
+              candidatesTokens: 0,
+              latencyMs: latencyMs,
+              keyMasked: GeminiKeyRotator.maskKey(key),
+              isSuccess: false,
+              errorMessage: 'Rate Limit (429)',
+            );
+            lastError =
+                'Key ${GeminiKeyRotator.maskKey(key)} đã chạm ngưỡng Rate Limit (429).';
             break;
-          } else if (response.statusCode == 400 || response.statusCode == 401 || response.statusCode == 403) {
+          } else if (response.statusCode == 400 ||
+              response.statusCode == 401 ||
+              response.statusCode == 403) {
             // Key không hợp lệ hoặc bị từ chối
-            _rotator.rotateOnFailure(key);
             String detail = '';
             try {
               final errBody = jsonDecode(utf8.decode(response.bodyBytes));
@@ -275,14 +373,60 @@ class GeminiRestService implements AttendanceAiService {
                 }
               }
             } catch (_) {}
-            lastError = 'Key ${GeminiKeyRotator.maskKey(key)} không hợp lệ hoặc bị từ chối (${response.statusCode}$detail).';
+
+            final errReason =
+                'Lỗi xác thực hoặc quyền (${response.statusCode}$detail)';
+            _rotator.rotateOnFailure(key, reason: errReason, isInvalid: true);
+            await _usageTracker.record(
+              operation: operation,
+              model: model,
+              promptTokens: 0,
+              candidatesTokens: 0,
+              latencyMs: latencyMs,
+              keyMasked: GeminiKeyRotator.maskKey(key),
+              isSuccess: false,
+              errorMessage: 'HTTP ${response.statusCode}$detail',
+            );
+            lastError =
+                'Key ${GeminiKeyRotator.maskKey(key)} không hợp lệ hoặc bị từ chối (${response.statusCode}$detail).';
             break;
           } else {
-            lastError = 'Gemini API trả về mã lỗi: ${response.statusCode}. Chi tiết: ${response.body}';
+            stopwatch.stop();
+            final latencyMs = stopwatch.elapsedMilliseconds;
+            _rotator.rotateOnFailure(
+              key,
+              reason: 'Mã lỗi HTTP: ${response.statusCode}',
+            );
+            await _usageTracker.record(
+              operation: operation,
+              model: model,
+              promptTokens: 0,
+              candidatesTokens: 0,
+              latencyMs: latencyMs,
+              keyMasked: GeminiKeyRotator.maskKey(key),
+              isSuccess: false,
+              errorMessage: 'Mã lỗi HTTP: ${response.statusCode}',
+            );
+            lastError =
+                'Gemini API trả về mã lỗi: ${response.statusCode}. Chi tiết: ${response.body}';
             break;
           }
         } catch (e) {
-          lastError = 'Lỗi kết nối khi gọi Key ${GeminiKeyRotator.maskKey(key)}: $e';
+          stopwatch.stop();
+          final latencyMs = stopwatch.elapsedMilliseconds;
+          _rotator.rotateOnFailure(key, reason: e.toString());
+          await _usageTracker.record(
+            operation: operation,
+            model: model,
+            promptTokens: 0,
+            candidatesTokens: 0,
+            latencyMs: latencyMs,
+            keyMasked: GeminiKeyRotator.maskKey(key),
+            isSuccess: false,
+            errorMessage: e.toString(),
+          );
+          lastError =
+              'Lỗi kết nối khi gọi Key ${GeminiKeyRotator.maskKey(key)}: $e';
           break;
         }
       }
@@ -292,6 +436,7 @@ class GeminiRestService implements AttendanceAiService {
     final fallbackResponse = await LocalAttendanceAiService().askAi(
       prompt: prompt,
       context: context,
+      operation: operation,
     );
     return '$fallbackResponse\n\n*(Lưu ý: Tất cả $totalKeys Gemini API Key đều không khả dụng ($lastError). Hệ thống đã tự động chuyển sang phân tích nội suy cục bộ)*';
   }
@@ -306,7 +451,9 @@ class GeminiRestService implements AttendanceAiService {
   }) async {
     final candidateKeys = (apiKeys != null && apiKeys.isNotEmpty)
         ? apiKeys
-        : (apiKey != null && apiKey.trim().isNotEmpty ? [apiKey.trim()] : _rotator.keys);
+        : (apiKey != null && apiKey.trim().isNotEmpty
+              ? [apiKey.trim()]
+              : _rotator.keys);
 
     if (candidateKeys.isEmpty) {
       return LocalAttendanceAiService().generateReport(
@@ -332,7 +479,12 @@ class GeminiRestService implements AttendanceAiService {
         '6. Cảnh báo các bất thường hoặc gian lận nộp trùng (nếu có).\n'
         '7. Đề xuất/Khuyến nghị cho giảng viên buổi học tiếp theo.';
 
-    return askAi(prompt: prompt, context: context, apiKeys: candidateKeys);
+    return askAi(
+      prompt: prompt,
+      context: context,
+      apiKeys: candidateKeys,
+      operation: 'report',
+    );
   }
 }
 
@@ -343,6 +495,7 @@ class LocalAttendanceAiService implements AttendanceAiService {
     required String context,
     String? apiKey,
     List<String>? apiKeys,
+    String operation = 'chat',
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     final lowerPrompt = prompt.toLowerCase();
@@ -355,8 +508,11 @@ class LocalAttendanceAiService implements AttendanceAiService {
         lowerPrompt.contains('vắng quá') ||
         lowerPrompt.contains('vắng gần') ||
         lowerPrompt.contains('cảnh báo')) {
-      final slotMatch = RegExp(r'Quy định môn học:\s*(\d+)\s*slots/kỳ').firstMatch(context);
-      final totalSlots = slotMatch != null ? int.tryParse(slotMatch.group(1)!) ?? 20 : 20;
+      final slotMatch = RegExp(r'Quy định môn học:\s*(\d+)\s*slots/kỳ')
+          .firstMatch(context);
+      final totalSlots = slotMatch != null
+          ? int.tryParse(slotMatch.group(1)!) ?? 20
+          : 20;
       final maxAllowed = (totalSlots * 0.20).floor();
       final barredMin = maxAllowed + 1;
 
@@ -385,11 +541,15 @@ class LocalAttendanceAiService implements AttendanceAiService {
       }
 
       final buffer = StringBuffer();
-      buffer.writeln('🚨 **CẢNH BÁO HỌC VỤ & NGUY CƠ CẤM THI (QUY CHẾ FPTU)**\n');
-      buffer.writeln('📋 *Căn cứ quy chế đào tạo:* Môn học có tổng cộng **$totalSlots slots**. '
-          'Sinh viên được phép vắng tối đa **$maxAllowed slots (≤ 20%)**. '
-          'Chỉ khi vắng **từ $barredMin slots trở lên (> 20%)** mới **BỊ CẤM THI**.\n'
-          '*Mỗi sinh viên được định danh duy nhất bằng Email FPT.*\n');
+      buffer.writeln(
+        '🚨 **CẢNH BÁO HỌC VỤ & NGUY CƠ CẤM THI (QUY CHẾ FPTU)**\n',
+      );
+      buffer.writeln(
+        '📋 *Căn cứ quy chế đào tạo:* Môn học có tổng cộng **$totalSlots slots**. '
+        'Sinh viên được phép vắng tối đa **$maxAllowed slots (≤ 20%)**. '
+        'Chỉ khi vắng **từ $barredMin slots trở lên (> 20%)** mới **BỊ CẤM THI**.\n'
+        '*Mỗi sinh viên được định danh duy nhất bằng Email FPT.*\n',
+      );
 
       if (barredLines.isNotEmpty) {
         buffer.writeln('🚫 **NHÓM BỊ CẤM THI (Vắng quá 20% tổng số slot):**');
@@ -397,7 +557,9 @@ class LocalAttendanceAiService implements AttendanceAiService {
           buffer.writeln('• $l');
         }
       } else {
-        buffer.writeln('✅ **NHÓM BỊ CẤM THI:** Hiện tại chưa có sinh viên nào vắng quá 20% (trên $maxAllowed slot).');
+        buffer.writeln(
+          '✅ **NHÓM BỊ CẤM THI:** Hiện tại chưa có sinh viên nào vắng quá 20% (trên $maxAllowed slot).',
+        );
       }
 
       buffer.writeln('');
@@ -408,18 +570,26 @@ class LocalAttendanceAiService implements AttendanceAiService {
           buffer.writeln('• $l');
         }
       } else {
-        buffer.writeln('👍 **NHÓM NGUY CƠ CẤM THI:** Không có sinh viên nào tiệm cận ngưỡng cấm thi.');
+        buffer.writeln(
+          '👍 **NHÓM NGUY CƠ CẤM THI:** Không có sinh viên nào tiệm cận ngưỡng cấm thi.',
+        );
       }
 
       buffer.writeln('\n💡 **Khuyến nghị cho giảng viên:**');
-      buffer.writeln('- Gửi Email học vụ nhắc nhở trực tiếp đến các sinh viên trong nhóm **Nguy cơ cấm thi** để các bạn không nghỉ thêm buổi nào.');
-      buffer.writeln('- Đối với sinh viên đã vượt ngưỡng cấm thi, chuyển danh sách cho Cán bộ Đào tạo xác nhận danh sách thi cuối kỳ.');
+      buffer.writeln(
+        '- Gửi Email học vụ nhắc nhở trực tiếp đến các sinh viên trong nhóm **Nguy cơ cấm thi** để các bạn không nghỉ thêm buổi nào.',
+      );
+      buffer.writeln(
+        '- Đối với sinh viên đã vượt ngưỡng cấm thi, chuyển danh sách cho Cán bộ Đào tạo xác nhận danh sách thi cuối kỳ.',
+      );
 
       return buffer.toString();
     }
 
     // 2. Tra cứu danh sách sinh viên vắng ở buổi hiện tại
-    if (lowerPrompt.contains('vắng') || lowerPrompt.contains('ai chưa') || lowerPrompt.contains('chưa điểm danh')) {
+    if (lowerPrompt.contains('vắng') ||
+        lowerPrompt.contains('ai chưa') ||
+        lowerPrompt.contains('chưa điểm danh')) {
       if (!context.contains('DANH SÁCH SINH VIÊN VẮNG HOẶC CHƯA ĐIỂM DANH')) {
         return '🎉 Tuyệt vời! Hiện tại không có sinh viên nào vắng mặt trong buổi học này (100% sinh viên đã điểm danh).';
       }
@@ -442,8 +612,14 @@ class LocalAttendanceAiService implements AttendanceAiService {
     }
 
     // 3. Tỷ lệ chuyên cần buổi học
-    if (lowerPrompt.contains('tỷ lệ') || lowerPrompt.contains('chuyên cần') || lowerPrompt.contains('phần trăm') || lowerPrompt.contains('%')) {
-      final match = RegExp(r'Có MẶT:\s*(\d+)\s*sinh viên\s*\(([\d\.]+%)\)', caseSensitive: false).firstMatch(context);
+    if (lowerPrompt.contains('tỷ lệ') ||
+        lowerPrompt.contains('chuyên cần') ||
+        lowerPrompt.contains('phần trăm') ||
+        lowerPrompt.contains('%')) {
+      final match = RegExp(
+        r'Có MẶT:\s*(\d+)\s*sinh viên\s*\(([\d\.]+%)\)',
+        caseSensitive: false,
+      ).firstMatch(context);
       if (match != null) {
         final count = match.group(1);
         final rate = match.group(2);
@@ -456,7 +632,9 @@ class LocalAttendanceAiService implements AttendanceAiService {
     }
 
     // 4. Gian lận / Trùng lặp
-    if (lowerPrompt.contains('trùng') || lowerPrompt.contains('gian lận') || lowerPrompt.contains('nghi vấn')) {
+    if (lowerPrompt.contains('trùng') ||
+        lowerPrompt.contains('gian lận') ||
+        lowerPrompt.contains('nghi vấn')) {
       if (context.contains('CẢNH BÁO NỘP TRÙNG LẶP')) {
         final lines = context.split('\n');
         final warningLines = <String>[];
@@ -479,7 +657,9 @@ class LocalAttendanceAiService implements AttendanceAiService {
     }
 
     // 5. Tóm tắt / Báo cáo
-    if (lowerPrompt.contains('tóm tắt') || lowerPrompt.contains('tổng quan') || lowerPrompt.contains('báo cáo')) {
+    if (lowerPrompt.contains('tóm tắt') ||
+        lowerPrompt.contains('tổng quan') ||
+        lowerPrompt.contains('báo cáo')) {
       return '📝 **Tóm tắt nhanh tình hình buổi học:**\n\n'
           'Hệ thống ghi nhận phiên học đang diễn ra bình thường. Các mã vé QR được cấp phát tự động mỗi 30 giây.\n'
           'Bạn có thể bấm nút **"Tạo báo cáo chuyên cần"** ở thanh công cụ phía trên để xem văn bản báo cáo chi tiết đầy đủ.';
@@ -504,7 +684,8 @@ class LocalAttendanceAiService implements AttendanceAiService {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     final scope = summary.scope;
     final rate = summary.totalStudents > 0
-        ? ((summary.presentCount / summary.totalStudents) * 100).toStringAsFixed(1)
+        ? ((summary.presentCount / summary.totalStudents) * 100)
+              .toStringAsFixed(1)
         : '0.0';
     final nowFormatted = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
 
@@ -521,74 +702,114 @@ class LocalAttendanceAiService implements AttendanceAiService {
 
     final buffer = StringBuffer();
     buffer.writeln('# BÁO CÁO CHUYÊN CẦN BUỔI HỌC');
-    buffer.writeln('*Hệ thống Điểm danh QR Thông minh - Xuất lúc: $nowFormatted*\n');
+    buffer.writeln(
+      '*Hệ thống Điểm danh QR Thông minh - Xuất lúc: $nowFormatted*\n',
+    );
     buffer.writeln('---');
     buffer.writeln('### 1. Thông tin phiên học');
     buffer.writeln('- **Môn học:** ${scope.className}');
-    buffer.writeln('- **Thời gian:** Ngày ${scope.date} | Slot ${scope.slotNumber} (${scope.timeRange})');
-    buffer.writeln('- **Trạng thái:** ${summary.isFinalized ? "✅ Đã đóng phiên & chốt sổ" : "⏳ Phiên đang mở (Số liệu tạm tính)"}');
+    buffer.writeln(
+      '- **Thời gian:** Ngày ${scope.date} | Slot ${scope.slotNumber} (${scope.timeRange})',
+    );
+    buffer.writeln(
+      '- **Trạng thái:** ${summary.isFinalized ? "✅ Đã đóng phiên & chốt sổ" : "⏳ Phiên đang mở (Số liệu tạm tính)"}',
+    );
     buffer.writeln('');
     buffer.writeln('### 2. Thống kê số liệu chuyên cần');
     buffer.writeln('| Chỉ số | Số lượng | Tỷ lệ |');
     buffer.writeln('| :--- | :---: | :---: |');
     buffer.writeln('| **Tổng sĩ số lớp** | ${summary.totalStudents} | 100% |');
-    buffer.writeln('| **Có mặt (Present)** | ${summary.presentCount} | **$rate%** |');
-    buffer.writeln('| **Vắng mặt (Absent / Chưa điểm danh)** | ${summary.pendingCount} | ${(100.0 - (double.tryParse(rate) ?? 0.0)).toStringAsFixed(1)}% |');
-    buffer.writeln('| **Cảnh báo nộp trùng (Retries)** | ${summary.retryEventCount} | - |');
+    buffer.writeln(
+      '| **Có mặt (Present)** | ${summary.presentCount} | **$rate%** |',
+    );
+    buffer.writeln(
+      '| **Vắng mặt (Absent / Chưa điểm danh)** | ${summary.pendingCount} | ${(100.0 - (double.tryParse(rate) ?? 0.0)).toStringAsFixed(1)}% |',
+    );
+    buffer.writeln(
+      '| **Cảnh báo nộp trùng (Retries)** | ${summary.retryEventCount} | - |',
+    );
     buffer.writeln('');
 
     buffer.writeln('### 3. Đánh giá của AI');
     final doubleRate = double.tryParse(rate) ?? 0.0;
     if (doubleRate >= 90) {
-      buffer.writeln('🌟 **Xuất sắc:** Lớp học đạt tỷ lệ chuyên cần rất cao ($rate%). Sinh viên tham gia đầy đủ và nghiêm túc.');
+      buffer.writeln(
+        '🌟 **Xuất sắc:** Lớp học đạt tỷ lệ chuyên cần rất cao ($rate%). Sinh viên tham gia đầy đủ và nghiêm túc.',
+      );
     } else if (doubleRate >= 75) {
-      buffer.writeln('👍 **Đạt yêu cầu:** Tỷ lệ chuyên cần ở mức khá ($rate%). Đa số sinh viên có mặt đúng giờ.');
+      buffer.writeln(
+        '👍 **Đạt yêu cầu:** Tỷ lệ chuyên cần ở mức khá ($rate%). Đa số sinh viên có mặt đúng giờ.',
+      );
     } else {
-      buffer.writeln('⚠️ **Cần lưu ý:** Tỷ lệ chuyên cần thấp ($rate%). Có ${summary.pendingCount} sinh viên vắng mặt.');
+      buffer.writeln(
+        '⚠️ **Cần lưu ý:** Tỷ lệ chuyên cần thấp ($rate%). Có ${summary.pendingCount} sinh viên vắng mặt.',
+      );
     }
     buffer.writeln('');
 
-    buffer.writeln('### 4. Cảnh báo Học vụ & Nguy cơ Cấm thi (Quy chế vắng quá 20% tổng số slot)');
-    buffer.writeln('Theo quy chế đào tạo, môn học có **$totalSlots slots**, sinh viên được phép vắng tối đa **$maxAllowed slots (≤ 20%)**. '
-        'Chỉ khi vắng từ **$barredMin slots trở lên (> 20%)** mới bị cấm thi. Mỗi sinh viên được xác nhận bằng **Email định danh duy nhất**:\n');
+    buffer.writeln(
+      '### 4. Cảnh báo Học vụ & Nguy cơ Cấm thi (Quy chế vắng quá 20% tổng số slot)',
+    );
+    buffer.writeln(
+      'Theo quy chế đào tạo, môn học có **$totalSlots slots**, sinh viên được phép vắng tối đa **$maxAllowed slots (≤ 20%)**. '
+      'Chỉ khi vắng từ **$barredMin slots trở lên (> 20%)** mới bị cấm thi. Mỗi sinh viên được xác nhận bằng **Email định danh duy nhất**:\n',
+    );
 
     if (barredStudents.isNotEmpty) {
       buffer.writeln('**🚫 Danh sách sinh viên BỊ CẤM THI (Vắng quá 20%):**');
       for (var i = 0; i < barredStudents.length; i++) {
         final s = barredStudents[i];
-        buffer.writeln('${i + 1}. **${s.studentName}** - Email: `${s.email}` - Vắng: **${s.totalAbsentSlots}/$totalSlots slot** (${s.absenceRate.toStringAsFixed(1)}%)');
+        buffer.writeln(
+          '${i + 1}. **${s.studentName}** - Email: `${s.email}` - Vắng: **${s.totalAbsentSlots}/$totalSlots slot** (${s.absenceRate.toStringAsFixed(1)}%)',
+        );
       }
     } else {
-      buffer.writeln('✅ Hiện tại chưa có sinh viên nào vắng quá 20% (vượt quá $maxAllowed slot).');
+      buffer.writeln(
+        '✅ Hiện tại chưa có sinh viên nào vắng quá 20% (vượt quá $maxAllowed slot).',
+      );
     }
     buffer.writeln('');
 
     if (dangerStudents.isNotEmpty) {
-      buffer.writeln('**⚠️ Danh sách sinh viên NGUY CƠ CẤM THI (Vắng gần hoặc chạm 20%):**');
+      buffer.writeln(
+        '**⚠️ Danh sách sinh viên NGUY CƠ CẤM THI (Vắng gần hoặc chạm 20%):**',
+      );
       for (var i = 0; i < dangerStudents.length; i++) {
         final s = dangerStudents[i];
-        buffer.writeln('${i + 1}. **${s.studentName}** - Email: `${s.email}` - Vắng: **${s.totalAbsentSlots}/$totalSlots slot** (${s.absenceRate.toStringAsFixed(1)}%) - *Còn được phép nghỉ: ${s.remainingAllowedSlots} buổi*');
+        buffer.writeln(
+          '${i + 1}. **${s.studentName}** - Email: `${s.email}` - Vắng: **${s.totalAbsentSlots}/$totalSlots slot** (${s.absenceRate.toStringAsFixed(1)}%) - *Còn được phép nghỉ: ${s.remainingAllowedSlots} buổi*',
+        );
       }
     } else {
-      buffer.writeln('👍 Không có sinh viên nào ở vùng nguy cơ tiệm cận ngưỡng cấm thi.');
+      buffer.writeln(
+        '👍 Không có sinh viên nào ở vùng nguy cơ tiệm cận ngưỡng cấm thi.',
+      );
     }
     buffer.writeln('');
 
-    final absentRows = summary.rows.where((r) => r.status != StudentAttendanceStatus.present).toList();
+    final absentRows = summary.rows
+        .where((r) => r.status != StudentAttendanceStatus.present)
+        .toList();
     if (absentRows.isNotEmpty) {
       buffer.writeln('### 5. Danh sách sinh viên vắng mặt ở buổi hiện tại');
       for (var i = 0; i < absentRows.length; i++) {
         final r = absentRows[i];
-        buffer.writeln('${i + 1}. **${r.student.displayName}** - Email: `${r.student.email}`');
+        buffer.writeln(
+          '${i + 1}. **${r.student.displayName}** - Email: `${r.student.email}`',
+        );
       }
       buffer.writeln('');
     }
 
     if (summary.retryEvents.isNotEmpty) {
       buffer.writeln('### 6. Cảnh báo nộp trùng / Gian lận');
-      buffer.writeln('Hệ thống ghi nhận **${summary.retryEvents.length} lượt nộp lặp lại** từ sinh viên:');
+      buffer.writeln(
+        'Hệ thống ghi nhận **${summary.retryEvents.length} lượt nộp lặp lại** từ sinh viên:',
+      );
       for (final evt in summary.retryEvents) {
-        buffer.writeln('- ${evt.displayName} (Lý do: ${evt.attempt.attemptType})');
+        buffer.writeln(
+          '- ${evt.displayName} (Lý do: ${evt.attempt.attemptType})',
+        );
       }
       buffer.writeln('');
     }

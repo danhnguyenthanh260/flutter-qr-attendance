@@ -5,27 +5,61 @@ import '../../data/models/ai_chat_message.dart';
 import '../../data/models/attendance_summary.dart';
 import '../../data/models/class_model.dart';
 import '../../data/models/session_day_group.dart';
+import '../../data/services/ai_usage_tracker.dart';
 import '../../data/services/gemini_ai_service.dart';
 import '../../data/services/gemini_key_rotator.dart';
 
 class AiAssistantProvider extends ChangeNotifier {
   final AttendanceAiService _aiService;
   final GeminiKeyRotator _rotator;
+  final AiUsageTracker _usageTracker;
   final List<ChatMessage> _messages = [];
   bool _isGenerating = false;
   String? _lastGeneratedReport;
 
-  AiAssistantProvider({
+  factory AiAssistantProvider({
     AttendanceAiService? aiService,
+    GeminiKeyRotator? rotator,
+    AiUsageTracker? usageTracker,
     String? initialApiKey,
     List<String>? initialApiKeys,
-  })  : _aiService = aiService ?? GeminiRestService(),
-        _rotator = GeminiKeyRotator(
-          initialApiKeys ??
-              (initialApiKey != null && initialApiKey.isNotEmpty
-                  ? [initialApiKey]
-                  : AppConfig.initialGeminiApiKeys),
-        ) {
+  }) {
+    final effectiveRotator =
+        rotator ??
+        (aiService is GeminiRestService
+            ? aiService.rotator
+            : GeminiKeyRotator(
+                initialApiKeys ??
+                    (initialApiKey != null && initialApiKey.isNotEmpty
+                        ? [initialApiKey]
+                        : AppConfig.initialGeminiApiKeys),
+              ));
+
+    final effectiveTracker =
+        usageTracker ??
+        (aiService is GeminiRestService
+            ? aiService.usageTracker
+            : AiUsageTracker.instance);
+
+    final effectiveService =
+        aiService ??
+        GeminiRestService(
+          rotator: effectiveRotator,
+          usageTracker: effectiveTracker,
+        );
+
+    return AiAssistantProvider._(
+      effectiveService,
+      effectiveRotator,
+      effectiveTracker,
+    );
+  }
+
+  AiAssistantProvider._(
+    this._aiService,
+    this._rotator,
+    this._usageTracker,
+  ) {
     // Thêm tin nhắn chào mừng ban đầu
     _messages.add(
       ChatMessage(
@@ -51,6 +85,7 @@ class AiAssistantProvider extends ChangeNotifier {
   bool get hasApiKey => _rotator.hasKeys;
   int get keyCount => _rotator.keyCount;
   GeminiKeyRotator get rotator => _rotator;
+  AiUsageTracker get usageTracker => _usageTracker;
   String? get lastGeneratedReport => _lastGeneratedReport;
 
   String get activeKeyStatus {
@@ -152,6 +187,7 @@ class AiAssistantProvider extends ChangeNotifier {
         prompt: text,
         context: context,
         apiKeys: _rotator.keys,
+        operation: 'chat',
       );
 
       // Thay thế loading message bằng câu trả lời thật
