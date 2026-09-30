@@ -93,6 +93,7 @@ class AiUsageSummary {
   final double totalCostUsd;
   final double averageLatencyMs;
   final List<AiUsageRecord> recentRecords;
+  final List<AiUsageRecord> allRecords;
 
   const AiUsageSummary({
     required this.totalRequests,
@@ -104,6 +105,7 @@ class AiUsageSummary {
     required this.totalCostUsd,
     required this.averageLatencyMs,
     required this.recentRecords,
+    this.allRecords = const [],
   });
 
   factory AiUsageSummary.fromRecords(List<AiUsageRecord> records) {
@@ -118,6 +120,7 @@ class AiUsageSummary {
         totalCostUsd: 0.0,
         averageLatencyMs: 0.0,
         recentRecords: [],
+        allRecords: [],
       );
     }
 
@@ -156,6 +159,7 @@ class AiUsageSummary {
       totalCostUsd: totalCost,
       averageLatencyMs: totalLatency / records.length,
       recentRecords: sorted.take(20).toList(),
+      allRecords: sorted,
     );
   }
 
