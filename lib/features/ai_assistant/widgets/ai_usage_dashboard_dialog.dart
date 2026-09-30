@@ -62,6 +62,9 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
 
     if (confirm == true && mounted) {
       await provider.usageTracker.clearHistory();
+      if (mounted) {
+        setState(() {});
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -77,51 +80,57 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
   Widget build(BuildContext context) {
     final provider = context.watch<AiAssistantProvider>();
     final tracker = provider.usageTracker;
-    final rotator = provider.rotator;
-    final summary = tracker.getSummary();
-    final keyStatuses = rotator.getKeyStatuses();
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 920, maxHeight: 740),
-        child: Column(
-          children: [
-            // 1. Header Toolbar
-            _buildHeader(context, provider),
+    return ListenableBuilder(
+      listenable: tracker,
+      builder: (context, _) {
+        final rotator = provider.rotator;
+        final summary = tracker.getSummary();
+        final keyStatuses = rotator.getKeyStatuses();
 
-            // 2. Main Scrollable Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 920, maxHeight: 740),
+            child: Column(
+              children: [
+                // 1. Header Toolbar
+                _buildHeader(context, provider),
+
+                // 2. Main Scrollable Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // A. 4 Key Summary Metric Cards
+                        _buildSummaryCards(summary),
+                        const SizedBox(height: 20),
+
+                        // B. Key Pool Diagnostics Section
+                        _buildKeyPoolSection(rotator, keyStatuses),
+                        const SizedBox(height: 20),
+
+                        // C. Recent Invocations Log Table
+                        _buildRecentInvocationsSection(summary),
+                      ],
+                    ),
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // A. 4 Key Summary Metric Cards
-                    _buildSummaryCards(summary),
-                    const SizedBox(height: 20),
 
-                    // B. Key Pool Diagnostics Section
-                    _buildKeyPoolSection(rotator, keyStatuses),
-                    const SizedBox(height: 20),
-
-                    // C. Recent Invocations Log Table
-                    _buildRecentInvocationsSection(summary),
-                  ],
-                ),
-              ),
+                // 3. Footer Actions
+                _buildFooter(context, provider),
+              ],
             ),
-
-            // 3. Footer Actions
-            _buildFooter(context, provider),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -177,7 +186,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 650;
+        final isCompact = constraints.maxWidth < 780;
         final cardWidth = isCompact
             ? (constraints.maxWidth - 12) / 2
             : (constraints.maxWidth - 36) / 4;
@@ -270,16 +279,19 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: AppColors.textSecondary,
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
@@ -335,12 +347,15 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
             children: [
               const Icon(Icons.key_rounded, size: 18, color: AppColors.primary),
               const SizedBox(width: 8),
-              Text(
-                'Tình trạng Pool API Keys ($activeCount/$totalCount khả dụng)',
-                style: AppTypography.heading3,
+              Expanded(
+                child: Text(
+                  'Tình trạng Pool API Keys ($activeCount/$totalCount khả dụng)',
+                  style: AppTypography.heading3,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const Spacer(),
-              if (totalCount > 0)
+              if (totalCount > 0) ...[
+                const SizedBox(width: 8),
                 TextButton.icon(
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
@@ -368,6 +383,7 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                     style: TextStyle(fontSize: 12),
                   ),
                 ),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -520,30 +536,46 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          alignment: WrapAlignment.spaceBetween,
+          spacing: 12,
+          runSpacing: 8,
           children: [
-            const Icon(
-              Icons.history_rounded,
-              size: 18,
-              color: AppColors.primary,
+            const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.history_rounded,
+                  size: 18,
+                  color: AppColors.primary,
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Lịch sử 20 lượt gọi gần nhất',
+                  style: AppTypography.heading3,
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            const Text(
-              'Lịch sử 20 lượt gọi gần nhất',
-              style: AppTypography.heading3,
-            ),
-            const Spacer(),
             // Filter segmented buttons
-            _buildFilterChip('all', 'Tất cả (${summary.recentRecords.length})'),
-            const SizedBox(width: 6),
-            _buildFilterChip(
-              'chat',
-              'Chat (${summary.recentRecords.where((r) => r.operation == 'chat').length})',
-            ),
-            const SizedBox(width: 6),
-            _buildFilterChip(
-              'report',
-              'Báo cáo (${summary.recentRecords.where((r) => r.operation == 'report').length})',
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildFilterChip(
+                  'all',
+                  'Tất cả (${summary.recentRecords.length})',
+                ),
+                const SizedBox(width: 6),
+                _buildFilterChip(
+                  'chat',
+                  'Chat (${summary.recentRecords.where((r) => r.operation == 'chat').length})',
+                ),
+                const SizedBox(width: 6),
+                _buildFilterChip(
+                  'report',
+                  'Báo cáo (${summary.recentRecords.where((r) => r.operation == 'report').length})',
+                ),
+              ],
             ),
           ],
         ),
@@ -661,7 +693,10 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 6,
+                  runSpacing: 2,
                   children: [
                     Text(
                       isReport ? 'Tạo Báo cáo' : 'Trò chuyện AI',
@@ -671,7 +706,6 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                         color: Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 6,
@@ -690,7 +724,6 @@ class _AiUsageDashboardDialogState extends State<AiUsageDashboardDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
                     Text(
                       '•  Key: ${record.keyMasked}',
                       style: const TextStyle(
